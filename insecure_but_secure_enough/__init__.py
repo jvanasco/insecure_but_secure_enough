@@ -36,7 +36,7 @@ This largely re-implements all of those, along with some other functionality.
 
 Right now, data is a base64_url_encoded version of a string, concatenated list, or json object (for dicts).  I opted against using pickle, because this format makes it easier to work with other web technologies ( js, php, etc ).  this might move to an all json version shortly.
 
-Check test.py to see an overview of how this works.
+Check demo.py to see an overview of how this works.
 
 
 # Signed Requests

@@ -1,5 +1,4 @@
-import secure_enough
-from secure_enough import SecureEnough
+from insecure_but_secure_enough import SecureEnough
 
 
 ### generated via `openssl genrsa -des3 -out private.pem 1024`
