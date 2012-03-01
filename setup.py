@@ -35,4 +35,5 @@ setup(name="insecure_but_secure_enough",
       zip_safe=False,
       tests_require = requires,
       install_requires = requires,
+      test_suite= 'tests',
       )

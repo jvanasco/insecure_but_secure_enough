@@ -67,6 +67,12 @@ The flow is as such:
 
 This flow will allow you to easily create a plethora of site secrets and RSA keys -- as in a new one each day -- which means that while this module is not actually secure, it is Secure Enough for most web applications.
 
+
+# ToDo:
+
+The timebased providers is entirely untested.  I need to build out the demo and the test suite to support it.
+
+
 """
 
 
@@ -84,19 +90,24 @@ from oaep import OAEP
 
 
 class Invalid(Exception):
+    """Base class you can catch"""
+    pass
+
+
+class InvalidAlgorithm(Invalid):
+    """Raised when a secret it too old"""
     pass
 
 class InvalidChecksum(Invalid):
+    """the checksums do not match"""
     pass
 
-class InvalidPayload(Invalid):
+class InvalidSignature(Invalid):
+    """the signature does not match"""
     pass
 
 class InvalidTimeout(Invalid):
-    pass
-
-class InvalidSecret(Invalid):
-    """Raised when a secret it too old"""
+    """Raised when a signature is too old"""
     pass
 
 
@@ -242,19 +253,19 @@ class SecureEnough(object):
 
 
     def obfuscator( self , timestamp=None ):
-        print "requesting obfuscator for %s" % timestamp
+        """internal function to return an obfuscator"""
         if self.config_obfuscation :
             return self.config_obfuscation.obfuscator(timestamp)
         return self._obfuscator
 
     def rsa_key( self , timestamp=None ):
-        print "requesting rsa_key for %s" % timestamp
+        """internal function to return a rsa key"""
         if self.config_rsa :
             return self.config_rsa.rsa_key(timestamp)
         return self._rsa_key
     
     def app_secret( self , timestamp=None ):
-        print "requesting app_secret for %s" % timestamp
+        """internal function to return an app secret"""
         if self.config_app_secret :
             return self.config_app_secret.app_secret(timestamp)
         return self._app_secret
@@ -262,41 +273,50 @@ class SecureEnough(object):
 
     @classmethod
     def _base64_url_encode(cls,text):
-        """this is just wrapping base64.urlsafe_b64encode , to allow for a later switch"""
+        """internal classmethod for b64 encoding.  this is just wrapping base64.urlsafe_b64encode , to allow for a later switch"""
         padded_b64 = base64.urlsafe_b64encode(text)
         return padded_b64.replace('=', '') # = is a reserved char
 
     @classmethod
     def _base64_url_decode(cls,inp):
-        """this is essentially wrapping base64.base64_url_decode , to allow for a later switch"""
+        """internal classmethod for b64 decoding. this is essentially wrapping base64.base64_url_decode , to allow for a later switch"""
         padding_factor = (4 - len(inp) % 4) % 4
         inp += "=" * padding_factor 
         return base64.urlsafe_b64decode(inp)
         
     @classmethod
     def _digestmod(cls, algorithm=None):
+        """internal class and instance method for returning an algoritm function"""
         if algorithm == 'HMAC-SHA256':
             digestmod= hashlib.sha256
         elif algorithm == 'HMAC-SHA1':
             digestmod= hashlib.sha1
         else:
-            raise ValueError("unsupported algorithm")
+            raise InvalidAlgorithm("unsupported algorithm - %s" % algorithm)
         return digestmod
 
     @classmethod
-    def signed_request_create( cls , data , secret=None , timeout=None , algorithm="HMAC-SHA256" ):
+    def signed_request_create( cls , data , secret=None , issued_at=None , algorithm="HMAC-SHA256" ):
+        """classmethod.  creates a signed token for `data` using `secret` , calculated by `algorithm`.  optionally include the `issued_at` """
         digestmod= cls._digestmod(algorithm)
+        if 'algorithm' in data and data['algorithm'] != algorithm :
+            raise InvalidAlgorithm('`algorithm` defined in payload already , and as another format')
         data['algorithm'] = algorithm
+        if issued_at and 'issued_at' not in data:
+            data['issued_at'] = issued_at
         payload= cls._base64_url_encode( json.dumps(data) )
         signature= hmac.new( secret , msg=payload , digestmod=digestmod ).hexdigest()
         return signature + '.' + payload
 
 
     @classmethod
-    def signed_request_verify( cls , signed_request=None , secret=None , timeout=None , algorithm="HMAC-SHA256" ):
+    def signed_request_verify( cls , signed_request=None , secret=None , timeout=None , algorithm="HMAC-SHA256" , payload_only=False ):
         """This is compatible with signed requests from facebook.com (https://developers.facebook.com/docs/authentication/signed_request/) 
         
-        returns a tuple of (Boolean,Dict), where Dict is the Payload and Boolean is True/False based on an optional timeout.  Raises an "Invalid" if a serious error occurs. """
+        returns a tuple of (Boolean,Dict), where Dict is the Payload and Boolean is True/False based on an optional timeout.  Raises an "Invalid" if a serious error occurs.
+        
+        if you submit the kwarg 'payload_only=True' , it will only return the extracted data .  No boolean will be returned.  If a timeout is also submitted, it will return the payload on success and False on failure.
+        """
         digestmod= cls._digestmod(algorithm)
 
         (signature,payload)= signed_request.split('.')
@@ -306,23 +326,32 @@ class SecureEnough(object):
         data = json.loads(payload_decoded)
 
         if data.get('algorithm').upper() != algorithm:
-            raise Invalid('unexpected algorithm.  Wanted %s , Received %s' % (algorithm,data.get('algorithm')) )
+            raise InvalidAlgorithm('unexpected algorithm.  Wanted %s , Received %s' % (algorithm,data.get('algorithm')) )
 
         expected_sig = hmac.new( secret , msg=payload , digestmod=digestmod ).hexdigest()
     
         if signature != expected_sig:
-            raise Invalid('invalid signature.  signature (%s) != expected_sig (%s)' % ( signature , expected_sig ) )
+            raise InvalidSignature('invalid signature.  signature (%s) != expected_sig (%s)' % ( signature , expected_sig ) )
             
         if timeout:
             time_now= int(time())
             diff = time_now - data['issued_at']
+            print ""
+            print "diff!"
+            print diff
+            print ""
             if ( diff > timeout ) :
+                if payload_only:
+                    return False
                 return ( False , data )
 
+        if payload_only:
+            return data
         return ( True , data )        
 
 
     def _serialize( self , data ):
+        """internal function to serialize multiple data types for transmission"""
         serialized= None
         if isinstance( data , types.DictType ):
             serialized= json.dumps(data)
@@ -339,6 +368,7 @@ class SecureEnough(object):
 
 
     def _deserialize( self , serialized ):
+        """internal function to deserialize multiple data types from transmission"""
         data = None
         try :
             data= json.loads( serialized )
@@ -352,6 +382,7 @@ class SecureEnough(object):
 
 
     def _hmac_for_timestamp( self , payload , timestamp , algorithm="HMAC-SHA1" ):
+        """internal function. calcuates an hmac for a timestamp. to accomplish this, we just pad the payload with the given timestamp"""
         digestmod= self._digestmod(algorithm)
         message= "%s||%s" % ( payload , timestamp ) 
         app_secret= self.app_secret( timestamp=timestamp )
@@ -360,7 +391,7 @@ class SecureEnough(object):
 
 
     def encode( self , data , hashtime=True , hmac_algorithm="HMAC-SHA1"):
-        """encode data"""
+        """public method. encodes data."""
         # compute the time, which is used for verification and coordinating the right secrets
         time_now= None
         if hashtime:
@@ -375,7 +406,7 @@ class SecureEnough(object):
         if self.use_obfuscation:
             payload=  self.obfuscator(timestamp=time_now).obfuscate( payload )
 
-		# .. optionally encrypt the payload
+        # .. optionally encrypt the payload
         if self.use_rsa_encryption:
             payload = self.rsa_key( timestamp=time_now ).encrypt( payload )
 
@@ -393,7 +424,7 @@ class SecureEnough(object):
 
 
     def decode( self, payload , hashtime=True , timeout=None , hmac_algorithm="HMAC-SHA1"):
-        """decode data"""
+        """public method. decodes data."""
         
         # if we dont have hashtime support, this needs to be None...
         time_then= None
@@ -410,7 +441,7 @@ class SecureEnough(object):
                     raise InvalidTimeout()
 
         # decoding is done in reverse of encoding
-		# so decrypt, then deobfuscate
+        # so decrypt, then deobfuscate
 
         payload = self._base64_url_decode(payload)
         
