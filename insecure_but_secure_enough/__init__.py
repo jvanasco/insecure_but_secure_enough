@@ -336,10 +336,6 @@ class SecureEnough(object):
         if timeout:
             time_now= int(time())
             diff = time_now - data['issued_at']
-            print ""
-            print "diff!"
-            print diff
-            print ""
             if ( diff > timeout ) :
                 if payload_only:
                     return False
