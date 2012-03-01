@@ -10,6 +10,8 @@ README = open(os.path.join(here, "README.txt")).read()
 README = README.split("\n\n", 1)[0] + "\n"
 
 requires = [
+	  'PyCrypto',
+	  'simplejson',
     ]
 
 setup(name="insecure_but_secure_enough",
@@ -24,10 +26,6 @@ setup(name="insecure_but_secure_enough",
         ],
       keywords="web pylons pyramid",
       py_modules=['insecure_but_secure_enough'],
-	  install_requires=[
-		  'PyCrypto',
-		  'simplejson',
-		  ],
       author="Jonathan Vanasco",
       author_email="jonathan@findmeon.com",
       url="https://github.com/jvanasco/insecure_but_secure_enough",
