@@ -25,7 +25,7 @@ rsa_key_private_passphrase= """tweet"""
 
 rsa_key_public= None
 
-factory= SecureEnough(app_secret='517353cr37' , use_rsa_encryption=False , rsa_key_private=rsa_key_private , rsa_key_private_passphrase=rsa_key_private_passphrase )
+factory= SecureEnough(app_secret='517353cr37' , use_rsa_encryption=True , rsa_key_private=rsa_key_private , rsa_key_private_passphrase=rsa_key_private_passphrase )
 
 if 0 :
 	
