@@ -1,6 +1,8 @@
 import secure_enough
 from secure_enough import SecureEnough
 
+
+### generated via `openssl genrsa -des3 -out private.pem 1024`
 rsa_key_private= """-----BEGIN RSA PRIVATE KEY-----
 Proc-Type: 4,ENCRYPTED
 DEK-Info: DES-EDE3-CBC,974B87982C450322
@@ -20,78 +22,62 @@ kZSdMQIc9jwAuyrwR4TvcSWHmzIN4P1l6R2KL31ViQxwokrdFpL46eUovIiG69sG
 qLMvdCqApHakhoed8JcllCws7ulDomv0L88KWCCtrvQQSb4l+PgNyQ==
 -----END RSA PRIVATE KEY-----
 """
-
 rsa_key_private_passphrase= """tweet"""
-
 rsa_key_public= None
 
-factory= SecureEnough(app_secret='517353cr37' , use_rsa_encryption=True , rsa_key_private=rsa_key_private , rsa_key_private_passphrase=rsa_key_private_passphrase )
-
-if 0 :
-	
-	print ""    
-	print "Test - SecureEnough.encrypt"
-	print factory.encrypt( 'hello' )
-	print factory.encode_payload( {'hello':'howareyou'} )
-	print factory.encode_payload( ['hello','howareyou'] )
-	
-
-if 1 :
-	#serialized=  factory.encode_payload( {'hello':'howareyou'} )
-	#deserialized=  factory.decode_payload( serialized )
-	encrypted=  factory.encrypt( {'hello':'howareyou'} , hashtime=True )
-	decrypted=  factory.decrypt( encrypted , hashtime=True )
-
-	#print "serialized - %s" % serialized
-	#print "deserialized - %s" % deserialized
-	print "encrypted - %s" % encrypted
-	print "decrypted - %s" % decrypted
+data= {'hello':'howareyou'}
 
 
-if 0 :
-	print ""    
-	print "Test - SecureEnough.obfuscate"
-	obs= SecureEnough.obfuscate( 'hello' )
-	obs2= SecureEnough.obfuscate(obs)
-	print obs
-	print obs2
-	print ""    
-	print ""
-	
-	
-	
-	
-	
-if 0 :
-	
-	print "SecureEnough.base64_url_encode"  
-	encoded= SecureEnough.base64_url_encode( 'Aa=as' )
-	print encoded
-	print ""    
-	print ""    
-	
-	print "SecureEnough.base64_url_decode"  
-	decoded= SecureEnough.base64_url_decode( encoded )
-	print decoded
-	print ""    
-	print ""    
-	
-	
-	print "data"    
-	data= { 'user.id':1 , 'name':'jonathan' }
-	print data
-	print ""    
-	print ""    
-	
-	print "SecureEnough.signed_request_create"  
-	signed= SecureEnough.signed_request_create( data , secret='123' )
-	print signed
-	print ""    
-	print ""    
-	
-	print "SecureEnough.signed_request_verify"  
-	unsigned= SecureEnough.signed_request_verify( signed , secret='123' )
-	print unsigned
-	print ""    
-	print ""    
-	
+## create a factory
+encryptionFactory= SecureEnough(\
+        app_secret = '517353cr37' , 
+        use_rsa_encryption = True , 
+        rsa_key_private = rsa_key_private , 
+        rsa_key_private_passphrase = rsa_key_private_passphrase 
+    )
+
+encrypted=  encryptionFactory.encode( data , hashtime=True )
+decrypted=  encryptionFactory.decode( encrypted , hashtime=True )
+
+print "Illustrating Encryption..."
+print "	data - %s" % data
+print "	encrypted - %s" % encrypted
+print "	decrypted - %s" % decrypted
+
+
+## create a factory
+signingFactory= SecureEnough(\
+        app_secret = '517353cr37' , 
+        use_rsa_encryption = False , 
+        use_obfuscation = False 
+    )
+
+signed=  signingFactory.encode( data , hashtime=True )
+signed_validated=  signingFactory.decode( signed , hashtime=True )
+unsigned=  signingFactory.encode( data , hashtime=False )
+unsigned_validated=  signingFactory.decode( unsigned , hashtime=False )
+
+print "Illustrating Signing..."
+print "	data - %s" % data
+print "	signed (timebased+sha1) - %s" % signed
+print "	validated (timebased+sha1) - %s" % signed_validated
+print "	unsigned - %s" % unsigned
+print "	unsigned validated - %s" % unsigned_validated
+
+
+signed=  signingFactory.encode( data , hashtime=True , hmac_algorithm="HMAC-SHA256" )
+signed_validated=  signingFactory.decode( signed , hashtime=True , hmac_algorithm="HMAC-SHA256" )
+print "	data - %s" % data
+print "	signed (timebased+sha256) - %s" % signed
+print "	validated (timebased+sha256) - %s" % signed_validated
+
+
+
+print "Illustrating Signed Requests..."
+print "SecureEnough.signed_request_create"  
+signed= SecureEnough.signed_request_create( data , secret='123' )
+print signed
+print "SecureEnough.signed_request_verify"  
+verified= SecureEnough.signed_request_verify( signed , secret='123' )
+print verified
+

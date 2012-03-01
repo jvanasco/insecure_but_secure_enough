@@ -1,5 +1,7 @@
 """
 
+This package is insecure, but secure enough.
+
 The idea for secure_enough to allow for "autologin cookies" and "instant login" urls for stupid social web applications.
 
 Two important things to note:
@@ -25,14 +27,17 @@ The encryption I used was a lightweight port from a CPAN module, so it could be 
 
 When i decided to re-implement this, looking around I found a handful of similar projects - which I've borrowed heavily from.
 
-
-
 They include:
     https://github.com/dziegler/django-urlcrypt/blob/master/urlcrypt/lib.py
     http://docs.pylonsproject.org/projects/pyramid/en/1.3-branch/api/session.html#pyramid.session.signed_serialize
     https://developers.facebook.com/docs/authentication/signed_request/
 
 This largely re-implements all of those, along with some other functionality.
+
+Right now, data is a base64_url_encoded version of a string, concatenated list, or json object (for dicts).  I opted against using pickle, because this format makes it easier to work with other web technologies ( js, php, etc ).  this might move to an all json version shortly.
+
+Check test.py to see an overview of how this works.
+
 
 # Signed Requests
 
@@ -44,16 +49,20 @@ are both handled as @classmethods - along with their support functions.  that me
 
 I built them as @classmethods instead of package functions... because if you want to extend the options for digest mods, you can just subclass SecureEnough and overwrite _digestmod to add more providers.
 
-# Encrypting Cookies
+# Encrypting and Signing Cookies
 
-Encrypting cookies currently happens via a 'global' RSA key for an instance of SecureEnough().  [ you provide it on the init() ]
+Encrypting cookies currently happens via a 'global' RSA key for an instance of SecureEnough().  [ you provide details for it in the __init__() ]
 
-My goal is to extend the class to use a timetstamped lookup function, via the ConfigurationProvider()
+Similarly, there are 
 
-The flow will likely be this:
+If you so desire, you can use timestamped based app_secrets, obfuscators and rsa keys.
 
-1. Subclass ConfigurationProvider() and overwrite the hooks you want.
+The flow is as such:
+
+1. Subclass the ConfigurationProvider() and overwrite the relevant hooks.  The requesting mehtods pass a single argument - timestamp - which should give you enough to go on.  Note that app_secret returns a string, while the obfuscator must return an object that can `obfuscate` and `deobfuscate` ; and rsa_key requires an object that can `encrypt` and `decrypt`.  This libray provides default functionality through wrapper objects you can mimic.
+
 2. Instantiate a SecureEnough() object, and register the relevant providers
+
 3. When encrypting data, SecureEnough() will ask the ConfigurationProvider() for the approprite keys/secrets for the current time() .  When decrypting data, SecureEnough() will ask the ConfigurationProvider() for the approprite keys/secrets for the time in the cookie/hash (if there is one) .  
 
 This flow will allow you to easily create a plethora of site secrets and RSA keys -- as in a new one each day -- which means that while this module is not actually secure, it is Secure Enough for most web applications.
@@ -86,22 +95,12 @@ class InvalidPayload(Invalid):
 class InvalidTimeout(Invalid):
     pass
 
+class InvalidSecret(Invalid):
+    """Raised when a secret it too old"""
+    pass
 
-class ConfigurationProvider(object):
-    """Create and build configuration providers"""
 
-    def app_secret(timestamp):
-        return ''
 
-    def obfuscation(timestamp):
-        obfuscation_secret= ''
-        obfuscation_key= ''
-        return obfuscation_secret , obfuscation_key
-
-    def rsa_key(timestamp):
-        rsa_key_private= ''
-        rsa_key_private_passphrase= ''
-        return rsa_key_private , rsa_key_private_passphrase
         
 class RsaKeyHolder(object):
     """wraps an RSA key"""
@@ -151,74 +150,135 @@ class RsaKeyHolder(object):
 
 
 
+
+class Obfuscator(object):
+    obfuscation_key= None
+    obfuscation_secret= None
+    
+    def __init__( self , obfuscation_key , obfuscation_secret ):
+        self.obfuscation_key= obfuscation_key
+        self.obfuscation_secret= obfuscation_secret
+        self.obfuscation_secret= obfuscation_secret
+        self.obfuscation_key = obfuscation_key
+        if not obfuscation_key:
+            self.obfuscation_key = hashlib.sha512(obfuscation_secret).digest() + hashlib.sha512(obfuscation_secret[::-1]).digest()
+
+    def obfuscate( self , text ):
+        # copy out our OBFUSCATE_KEY to the length of the text
+        key = self.obfuscation_key * (len(text)//len(self.obfuscation_key) + 1)
+        # XOR each character from our input with the corresponding character from the key
+        xor_gen = (chr(ord(t) ^ ord(k)) for t, k in zip(text, key))
+        return ''.join(xor_gen)
+        
+    deobfuscate = obfuscate
+    
+
+
+
+class ConfigurationProvider(object):
+    """Create and build configuration providers"""
+
+    def app_secret(timestamp):
+        """for a given timestamp, this should return the appropriate app secret"""
+        return ''
+
+    def obfuscator(timestamp):
+        """for a given timestamp, this should return the appropriate obfuscator"""
+        obfuscation_secret= ''
+        obfuscation_key= ''
+        return Obfuscator( obfuscation_key , obfuscation_secret )
+
+    def rsa_key(timestamp):
+        """for a given timestamp, this should return the appropriate RSA Key"""
+        rsa_key_private= ''
+        rsa_key_private_passphrase= ''
+        return RsaKeyHolder( key_private = rsa_key_private , key_private_passphrase = rsa_key_private_passphrase )
+
+
+
 class SecureEnough(object):
     config_app_secret= None
     config_obfuscation= None
     config_rsa= None
 
-    app_secret= ''
-
     use_rsa_encryption = False
-    rsa_key_private= None
-    rsa_key_private_passphrase= None
-
     use_obfuscation= False
-    obfuscation_secret = ''
-    obfuscation_key = ''
+
+    _app_secret= None
 
     def __init__( self ,
             config_app_secret=None ,
             app_secret='' , 
 
-            use_rsa_encryption=True , 
+            use_rsa_encryption=False , 
             config_rsa= None,
             rsa_key_private=None , 
             rsa_key_private_passphrase=None , 
 
-            use_obfuscation=True ,
+            use_obfuscation=False ,
             config_obfuscation=None,
             obfuscation_secret='' , 
             obfuscation_key= None
         ):
         if config_app_secret:
-            factory_app_secret= config_app_secret
+            config_app_secret= config_app_secret
         else:
-            self.app_secret= app_secret
+            self._app_secret= app_secret
 
         if use_rsa_encryption:
             self.use_rsa_encryption= use_rsa_encryption
             if config_rsa:
                 self.config_rsa= config_rsa
             else:
-                self.rsa_key= RsaKeyHolder( key_private=rsa_key_private , key_private_passphrase=rsa_key_private_passphrase )
+                self._rsa_key= RsaKeyHolder( key_private = rsa_key_private , key_private_passphrase = rsa_key_private_passphrase )
 
         if use_obfuscation:
             self.use_obfuscation= use_obfuscation
             if config_obfuscation: 
                 self.config_obfuscation= config_obfuscation
             else:
-                self.obfuscation_secret= obfuscation_secret
-                self.obfuscation_key = obfuscation_key
-                if not obfuscation_key:
-                    self.obfuscation_key = hashlib.sha512(obfuscation_secret).digest() + hashlib.sha512(obfuscation_secret[::-1]).digest()
+                self._obfuscator= Obfuscator( obfuscation_key , obfuscation_secret)
+                
+
+
+    def obfuscator( self , timestamp=None ):
+        print "requesting obfuscator for %s" % timestamp
+        if self.config_obfuscation :
+            return self.config_obfuscation.obfuscator(timestamp)
+        return self._obfuscator
+
+    def rsa_key( self , timestamp=None ):
+        print "requesting rsa_key for %s" % timestamp
+        if self.config_rsa :
+            return self.config_rsa.rsa_key(timestamp)
+        return self._rsa_key
+    
+    def app_secret( self , timestamp=None ):
+        print "requesting app_secret for %s" % timestamp
+        if self.config_app_secret :
+            return self.config_app_secret.app_secret(timestamp)
+        return self._app_secret
+    
 
     @classmethod
-    def base64_url_encode(cls,text):
+    def _base64_url_encode(cls,text):
         """this is just wrapping base64.urlsafe_b64encode , to allow for a later switch"""
         padded_b64 = base64.urlsafe_b64encode(text)
         return padded_b64.replace('=', '') # = is a reserved char
 
     @classmethod
-    def base64_url_decode(cls,inp):
+    def _base64_url_decode(cls,inp):
         """this is essentially wrapping base64.base64_url_decode , to allow for a later switch"""
         padding_factor = (4 - len(inp) % 4) % 4
         inp += "=" * padding_factor 
         return base64.urlsafe_b64decode(inp)
         
     @classmethod
-    def _digestmod(cls, algorithm):
+    def _digestmod(cls, algorithm=None):
         if algorithm == 'HMAC-SHA256':
             digestmod= hashlib.sha256
+        elif algorithm == 'HMAC-SHA1':
+            digestmod= hashlib.sha1
         else:
             raise ValueError("unsupported algorithm")
         return digestmod
@@ -227,7 +287,7 @@ class SecureEnough(object):
     def signed_request_create( cls , data , secret=None , timeout=None , algorithm="HMAC-SHA256" ):
         digestmod= cls._digestmod(algorithm)
         data['algorithm'] = algorithm
-        payload= cls.base64_url_encode( json.dumps(data) )
+        payload= cls._base64_url_encode( json.dumps(data) )
         signature= hmac.new( secret , msg=payload , digestmod=digestmod ).hexdigest()
         return signature + '.' + payload
 
@@ -238,10 +298,11 @@ class SecureEnough(object):
         
         returns a tuple of (Boolean,Dict), where Dict is the Payload and Boolean is True/False based on an optional timeout.  Raises an "Invalid" if a serious error occurs. """
         digestmod= cls._digestmod(algorithm)
+
         (signature,payload)= signed_request.split('.')
 
-        decoded_signature = cls.base64_url_decode(signature)
-        payload_decoded= cls.base64_url_decode(payload)
+        decoded_signature = cls._base64_url_decode(signature)
+        payload_decoded= cls._base64_url_decode(payload)
         data = json.loads(payload_decoded)
 
         if data.get('algorithm').upper() != algorithm:
@@ -274,7 +335,8 @@ class SecureEnough(object):
         else:
             raise TypeError('invalid type for serialization')
         return serialized
-    
+
+
 
     def _deserialize( self , serialized ):
         data = None
@@ -288,55 +350,58 @@ class SecureEnough(object):
         return data
 
 
-    def obfuscate( self , text ):
-        # copy out our OBFUSCATE_KEY to the length of the text
-        key = self.obfuscation_key * (len(text)//len(self.obfuscation_key) + 1)
-        # XOR each character from our input with the corresponding character from the key
-        xor_gen = (chr(ord(t) ^ ord(k)) for t, k in zip(text, key))
-        return ''.join(xor_gen)
-        
-    
-    def encode_payload( self , data ):
-        serialized = self._serialize( data )
-        signature = hmac.new( self.app_secret , serialized , hashlib.sha1 ).hexdigest()
-        if self.use_obfuscation:
-            obfuscated=  self.obfuscate( serialized )
-            return obfuscated
-        else:
-            return serialized
 
-    
-    def decode_payload( self , serialized ):
-        if self.use_obfuscation :
-            deobfuscated=  self.obfuscate( serialized )
-            data= self._deserialize(deobfuscated)
-        else:
-            data= self._deserialize(serialized)
-        return data
-
-        
-    def _hmac_for_time(self,payload,time_now,algorithm="HMAC-SHA256" ):
+    def _hmac_for_timestamp( self , payload , timestamp , algorithm="HMAC-SHA1" ):
         digestmod= self._digestmod(algorithm)
-        message= "%s||%s" % ( payload , time_now ) 
-        return hmac.new( self.app_secret , msg=message , digestmod=digestmod ).hexdigest()
+        message= "%s||%s" % ( payload , timestamp ) 
+        app_secret= self.app_secret( timestamp=timestamp )
+        return hmac.new( app_secret , msg=message , digestmod=digestmod ).hexdigest()
 
 
-    def encrypt(self,data,hashtime=True):
-        payload= self.encode_payload(data)
-        if self.use_rsa_encryption:
-            payload = self.rsa_key.encrypt(payload)
-        payload= self.base64_url_encode(payload)
+
+    def encode( self , data , hashtime=True , hmac_algorithm="HMAC-SHA1"):
+        """encode data"""
+        # compute the time, which is used for verification and coordinating the right secrets
+        time_now= None
         if hashtime:
             time_now= int(time())
-            hash= self._hmac_for_time(payload,time_now)
+        
+        # encode the payload , which serializes it and possibly obfuscates it
+        
+        # .. first we serialize it
+        payload = self._serialize( data )
+
+        # .. optionally include lightweight obfuscation
+        if self.use_obfuscation:
+            payload=  self.obfuscator(timestamp=time_now).obfuscate( payload )
+
+		# .. optionally encrypt the payload
+        if self.use_rsa_encryption:
+            payload = self.rsa_key( timestamp=time_now ).encrypt( payload )
+
+        # finally urlencode it
+        payload= self._base64_url_encode( payload )
+
+        # if we're computing time-sensitive keys or expiration, we'll return a compound token
+        if hashtime:
+            hash= self._hmac_for_timestamp( payload , time_now , algorithm=hmac_algorithm )
             compound= "%s|%s|%s" % ( payload , time_now , hash )
             return compound
+        # otherwise, just return the payload
         return payload
 
-    def decrypt(self,payload,hashtime=True,timeout=None):
+
+
+    def decode( self, payload , hashtime=True , timeout=None , hmac_algorithm="HMAC-SHA1"):
+        """decode data"""
+        
+        # if we dont have hashtime support, this needs to be None...
+        time_then= None
+
+        # try to validate the hashtime
         if hashtime :
             ( payload , time_then , hash_received )= payload.split('|')
-            hash_expected= self._hmac_for_time( payload , time_then )
+            hash_expected= self._hmac_for_timestamp( payload , time_then , algorithm=hmac_algorithm )
             if hash_expected != hash_received:
                 raise InvalidChecksum()
             if timeout:
@@ -344,10 +409,19 @@ class SecureEnough(object):
                 if ( (time_now - time_then) > timeout ) :
                     raise InvalidTimeout()
 
-        payload = self.base64_url_decode(payload)
+        # decoding is done in reverse of encoding
+		# so decrypt, then deobfuscate
+
+        payload = self._base64_url_decode(payload)
+        
         if self.use_rsa_encryption:
-            payload = self.rsa_key.decrypt(payload)
-        payload = self.decode_payload(payload)
+            payload = self.rsa_key( timestamp=time_then ).decrypt(payload)
+
+        if self.use_obfuscation :
+            payload=  self.obfuscator(timestamp=time_then).deobfuscate( payload )
+
+        payload = self._deserialize(payload)
 
         return payload
+
 
