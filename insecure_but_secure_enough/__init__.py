@@ -73,6 +73,10 @@ This flow will allow you to easily create a plethora of site secrets and RSA key
 The timebased providers is entirely untested.  I need to build out the demo and the test suite to support it.
 
 
+/__init__.py is released under the MIT license
+/oaep.py is a set of trivial fixes applied to a patch publicly submitted to PyCrypto , which is in the public domain.
+
+
 """
 
 
