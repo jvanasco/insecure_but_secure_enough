@@ -7,14 +7,14 @@ The idea for secure_enough to allow for "autologin cookies" and "instant login" 
 Two important things to note:
 
     1. You should not use this module for financial transactions or sensitive info.  That would be egregiously stupid.
-    2. If you log someone in with this , you should note the login as "insecure" and require them to provide a password to view sensitive data or any 'write' activity. 
-    
+    2. If you log someone in with this , you should note the login as "insecure" and require them to provide a password to view sensitive data or any 'write' activity.
+
 
 Long ago, I had a class that would do a trivial encryption on cookie data, coupled with a lightweight hash to handle timeout events.  This way you wouldn't always have to decrypt data to do a light verification.  The general flow was this:
 
 To encode:
     cookie = encypted_data + timestamp + hash(encrypted_data + timestamp + secret )
-    
+
 To decode:
     ( payload , timestamp , hash ) = cookie
     if hash != hash ( payload , timestamp , secret ):
@@ -53,7 +53,7 @@ I built them as @classmethods instead of package functions... because if you wan
 
 Encrypting cookies currently happens via a 'global' RSA key for an instance of SecureEnough().  [ you provide details for it in the __init__() ]
 
-Similarly, there are 
+Similarly, there are
 
 If you so desire, you can use timestamped based app_secrets, obfuscators and rsa keys.
 
@@ -63,7 +63,7 @@ The flow is as such:
 
 2. Instantiate a SecureEnough() object, and register the relevant providers
 
-3. When encrypting data, SecureEnough() will ask the ConfigurationProvider() for the approprite keys/secrets for the current time() .  When decrypting data, SecureEnough() will ask the ConfigurationProvider() for the approprite keys/secrets for the time in the cookie/hash (if there is one) .  
+3. When encrypting data, SecureEnough() will ask the ConfigurationProvider() for the approprite keys/secrets for the current time() .  When decrypting data, SecureEnough() will ask the ConfigurationProvider() for the approprite keys/secrets for the time in the cookie/hash (if there is one) .
 
 This flow will allow you to easily create a plethora of site secrets and RSA keys -- as in a new one each day -- which means that while this module is not actually secure, it is Secure Enough for most web applications.
 
@@ -85,7 +85,8 @@ import hashlib
 import hmac
 from time import time
 import simplejson as json
-from Crypto.PublicKey import RSA 
+from Crypto.PublicKey import RSA
+from Crypto.Random import atfork
 import types
 import os
 
@@ -116,7 +117,7 @@ class InvalidTimeout(Invalid):
 
 
 
-        
+
 class RsaKeyHolder(object):
     """wraps an RSA key"""
     key= None
@@ -125,7 +126,7 @@ class RsaKeyHolder(object):
     key_length_bytes= None
     block_bytes= None
     padder= None
-    
+
     def __init__( self , key_private=None , key_private_passphrase=None ):
         self._key_private = key_private
         self._key_private_passphrase = key_private_passphrase
@@ -137,7 +138,7 @@ class RsaKeyHolder(object):
         self.block_bytes=  self.key_length_bytes - 2 * 20 - 2 # from oaep.py
         self.padder= OAEP(os.urandom)
 
-        
+
     def encrypt(self,s):
         encrypted_blocks = []
         for block in self.split_string(s, self.block_bytes):
@@ -145,7 +146,7 @@ class RsaKeyHolder(object):
             encrypted_block = self.key.encrypt(padded_block, None)[0]
             encrypted_blocks.append(encrypted_block)
         return ''.join(encrypted_blocks)
-        
+
     def decrypt(self,s):
         decrypted_blocks = []
         for block in self.split_string(s, self.key_length_bytes):
@@ -169,7 +170,7 @@ class RsaKeyHolder(object):
 class Obfuscator(object):
     obfuscation_key= None
     obfuscation_secret= None
-    
+
     def __init__( self , obfuscation_key , obfuscation_secret ):
         self.obfuscation_key= obfuscation_key
         self.obfuscation_secret= obfuscation_secret
@@ -184,9 +185,9 @@ class Obfuscator(object):
         # XOR each character from our input with the corresponding character from the key
         xor_gen = (chr(ord(t) ^ ord(k)) for t, k in zip(text, key))
         return ''.join(xor_gen)
-        
+
     deobfuscate = obfuscate
-    
+
 
 
 
@@ -223,16 +224,16 @@ class SecureEnough(object):
 
     def __init__( self ,
             config_app_secret=None ,
-            app_secret='' , 
+            app_secret='' ,
 
-            use_rsa_encryption=False , 
+            use_rsa_encryption=False ,
             config_rsa= None,
-            rsa_key_private=None , 
-            rsa_key_private_passphrase=None , 
+            rsa_key_private=None ,
+            rsa_key_private_passphrase=None ,
 
             use_obfuscation=False ,
             config_obfuscation=None,
-            obfuscation_secret='' , 
+            obfuscation_secret='' ,
             obfuscation_key= None
         ):
         if config_app_secret:
@@ -249,11 +250,11 @@ class SecureEnough(object):
 
         if use_obfuscation:
             self.use_obfuscation= use_obfuscation
-            if config_obfuscation: 
+            if config_obfuscation:
                 self.config_obfuscation= config_obfuscation
             else:
                 self._obfuscator= Obfuscator( obfuscation_key , obfuscation_secret)
-                
+
 
 
     def obfuscator( self , timestamp=None ):
@@ -267,13 +268,13 @@ class SecureEnough(object):
         if self.config_rsa :
             return self.config_rsa.rsa_key(timestamp)
         return self._rsa_key
-    
+
     def app_secret( self , timestamp=None ):
         """internal function to return an app secret"""
         if self.config_app_secret :
             return self.config_app_secret.app_secret(timestamp)
         return self._app_secret
-    
+
 
     @classmethod
     def _base64_url_encode(cls,text):
@@ -285,9 +286,9 @@ class SecureEnough(object):
     def _base64_url_decode(cls,inp):
         """internal classmethod for b64 decoding. this is essentially wrapping base64.base64_url_decode , to allow for a later switch"""
         padding_factor = (4 - len(inp) % 4) % 4
-        inp += "=" * padding_factor 
+        inp += "=" * padding_factor
         return base64.urlsafe_b64decode(inp)
-        
+
     @classmethod
     def _digestmod(cls, algorithm=None):
         """internal class and instance method for returning an algoritm function"""
@@ -315,10 +316,10 @@ class SecureEnough(object):
 
     @classmethod
     def signed_request_verify( cls , signed_request=None , secret=None , timeout=None , algorithm="HMAC-SHA256" , payload_only=False ):
-        """This is compatible with signed requests from facebook.com (https://developers.facebook.com/docs/authentication/signed_request/) 
-        
+        """This is compatible with signed requests from facebook.com (https://developers.facebook.com/docs/authentication/signed_request/)
+
         returns a tuple of (Boolean,Dict), where Dict is the Payload and Boolean is True/False based on an optional timeout.  Raises an "Invalid" if a serious error occurs.
-        
+
         if you submit the kwarg 'payload_only=True' , it will only return the extracted data .  No boolean will be returned.  If a timeout is also submitted, it will return the payload on success and False on failure.
         """
         digestmod= cls._digestmod(algorithm)
@@ -333,10 +334,10 @@ class SecureEnough(object):
             raise InvalidAlgorithm('unexpected algorithm.  Wanted %s , Received %s' % (algorithm,data.get('algorithm')) )
 
         expected_sig = hmac.new( secret , msg=payload , digestmod=digestmod ).hexdigest()
-    
+
         if signature != expected_sig:
             raise InvalidSignature('invalid signature.  signature (%s) != expected_sig (%s)' % ( signature , expected_sig ) )
-            
+
         if timeout:
             time_now= int(time())
             diff = time_now - data['issued_at']
@@ -347,7 +348,7 @@ class SecureEnough(object):
 
         if payload_only:
             return data
-        return ( True , data )        
+        return ( True , data )
 
 
     def _serialize( self , data ):
@@ -355,7 +356,7 @@ class SecureEnough(object):
         serialized= None
         if isinstance( data , types.DictType ):
             serialized= json.dumps(data)
-        elif isinstance( data , types.ListType ) or isinstance( data , types.TupleType ) : 
+        elif isinstance( data , types.ListType ) or isinstance( data , types.TupleType ) :
             assert '|' not in ''.join(data)
             serialized= '|'.join(data)
         elif isinstance( data , types.StringTypes ):
@@ -384,7 +385,7 @@ class SecureEnough(object):
     def _hmac_for_timestamp( self , payload , timestamp , algorithm="HMAC-SHA1" ):
         """internal function. calcuates an hmac for a timestamp. to accomplish this, we just pad the payload with the given timestamp"""
         digestmod= self._digestmod(algorithm)
-        message= "%s||%s" % ( payload , timestamp ) 
+        message= "%s||%s" % ( payload , timestamp )
         app_secret= self.app_secret( timestamp=timestamp )
         return hmac.new( app_secret , msg=message , digestmod=digestmod ).hexdigest()
 
@@ -396,9 +397,9 @@ class SecureEnough(object):
         time_now= None
         if hashtime:
             time_now= int(time())
-        
+
         # encode the payload , which serializes it and possibly obfuscates it
-        
+
         # .. first we serialize it
         payload = self._serialize( data )
 
@@ -425,7 +426,7 @@ class SecureEnough(object):
 
     def decode( self, payload , hashtime=True , timeout=None , hmac_algorithm="HMAC-SHA1"):
         """public method. decodes data."""
-        
+
         # if we dont have hashtime support, this needs to be None...
         time_then= None
 
@@ -444,7 +445,7 @@ class SecureEnough(object):
         # so decrypt, then deobfuscate
 
         payload = self._base64_url_decode(payload)
-        
+
         if self.use_rsa_encryption:
             payload = self.rsa_key( timestamp=time_then ).decrypt(payload)
 
