@@ -4,6 +4,7 @@
 	- added AES
 	- added demo_performance
 	- cleaned up demo
+	- removed oaep.py ; replaced with newer cipher feature in 2.5
 
 0.0.1
 	initial release

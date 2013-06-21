@@ -72,9 +72,7 @@ This flow will allow you to easily create a plethora of site secrets and RSA key
 
 The timebased providers is entirely untested.  I need to build out the demo and the test suite to support it.
 
-
 /__init__.py is released under the MIT license
-/oaep.py is a set of trivial fixes applied to a patch publicly submitted to PyCrypto , which is in the public domain.
 
 
 """
@@ -96,8 +94,7 @@ from Crypto.Cipher import AES
 from Crypto.PublicKey import RSA
 from Crypto.Random import atfork
 
-from .oaep import OAEP
-
+from Crypto.Cipher import PKCS1_OAEP
 
 
 class Invalid(Exception):
@@ -164,9 +161,10 @@ class RsaKeyHolder(object):
     key= None
     _key_private= None
     _key_private_passphrase= None
+    
     key_length_bytes= None
     block_bytes= None
-    padder= None
+    cipher = None
 
     def __init__( self , key_private=None , key_private_passphrase=None ):
         self._key_private = key_private
@@ -176,22 +174,20 @@ class RsaKeyHolder(object):
         else:
             self.key= RSA.importKey( self._key_private )
         self.key_length_bytes= int((self.key.size() + 1) / 8)
-        self.block_bytes=  self.key_length_bytes - 2 * 20 - 2 # from oaep.py
-        self.padder= OAEP(os.urandom)
+        self.block_bytes=  self.key_length_bytes - 2 * 20 - 2 # from https://bugs.launchpad.net/pycrypto/+bug/328027
+        self.cipher = PKCS1_OAEP.new(self.key)
 
     def encrypt(self,s):
         encrypted_blocks = []
         for block in self.split_string(s, self.block_bytes):
-            padded_block = self.padder.encode(self.key_length_bytes, block) # will raise ValueError if token is too long
-            encrypted_block = self.key.encrypt(padded_block, None)[0]
+            encrypted_block = self.cipher.encrypt(block)
             encrypted_blocks.append(encrypted_block)
         return ''.join(encrypted_blocks)
 
     def decrypt(self,s):
         decrypted_blocks = []
         for block in self.split_string(s, self.key_length_bytes):
-            padded_block = '\x00' + self.key.decrypt(block) # NUL byte is apparently dropped by decryption
-            decrypted_block = self.padder.decode(self.key_length_bytes, padded_block) # will raise ValueError on corrupt token
+            decrypted_block = self.cipher.decrypt(block)
             decrypted_blocks.append(decrypted_block)
         return ''.join(decrypted_blocks)
 

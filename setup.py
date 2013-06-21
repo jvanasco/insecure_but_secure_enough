@@ -10,12 +10,12 @@ README = open(os.path.join(here, "README.md")).read()
 README = README.split("\n\n", 1)[0] + "\n"
 
 requires = [
-	  'PyCrypto',
+	  'PyCrypto >= 2.6',
 	  'simplejson',
     ]
 
 setup(name="insecure_but_secure_enough",
-      version="0.0.1",
+      version="0.0.2",
       description="Lightweight tools for signing and encrypting cookies, urls and stuff. This package isn't really secure, but its secure enough for most needs.",
       long_description=README,
       classifiers=[
