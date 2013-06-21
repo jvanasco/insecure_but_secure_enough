@@ -10,6 +10,45 @@ Two important things to note:
     2. If you log someone in with this , you should note the login as "insecure" and require them to provide a password to view sensitive data or any 'write' activity.
 
 
+This package supports the following schemes for encrypting data:
+
+1. RSA encryption (really!)
+2. AES encryption
+
+This package supports the following schemes for signing data:
+
+1. No signing ( just serialize )
+2. HMAC SHA1 signing
+3. HMAC SHA256 signing
+4. Request signing, as compatible with Facebook's auth scheme.
+	
+The data transformation is as follows :
+
+1. serialize ( convert to JSON )
+2. base64 encode
+3. ? obfuscate
+4. ? encrypt
+5. ? sign
+	
+UNTESTED
+
+* You can create "configuration objects" that accept a timestamp and return an appropriate secret/encryption key
+
+===================
+
+
+There is a bit of documentation in:
+	https://github.com/jvanasco/insecure_but_secure_enough/blob/master/insecure_but_secure_enough/__init__.py
+
+The following files give an interactive demo:
+
+	https://github.com/jvanasco/insecure_but_secure_enough/blob/master/demo.py
+	https://github.com/jvanasco/insecure_but_secure_enough/blob/master/demo_performance.py
+
+Also note that the github source distribution contains tests.
+
+===================
+
 Long ago, I had a class that would do a trivial encryption on cookie data, coupled with a lightweight hash to handle timeout events.  This way you wouldn't always have to decrypt data to do a light verification.  The general flow was this:
 
 To encode:
@@ -66,6 +105,15 @@ The flow is as such:
 3. When encrypting data, SecureEnough() will ask the ConfigurationProvider() for the approprite keys/secrets for the current time() .  When decrypting data, SecureEnough() will ask the ConfigurationProvider() for the approprite keys/secrets for the time in the cookie/hash (if there is one) .
 
 This flow will allow you to easily create a plethora of site secrets and RSA keys -- as in a new one each day -- which means that while this module is not actually secure, it is Secure Enough for most web applications.
+
+===========
+
+
+
+
+
+===========
+
 
 
 # ToDo:
