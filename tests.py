@@ -34,6 +34,19 @@ data= {'hello':'world!'}
 app_secret= '517353cr37'
 app_secret_wrong = 'not-the-app-secret'
 
+def _validate_signed_request_payload( decrypted_payload , original_data , algorithm='HMAC-SHA256' , issued_at=None ):
+    # ensure everything ORIGINAL is DECRYPTED
+    for i in original_data.keys() :
+        if i not in decrypted_payload :
+            return False
+        if original_data[i] != decrypted_payload[i] :
+            return False
+    additions = {}
+    for i in decrypted_payload.keys() :
+        if i not in original_data :
+            additions[i] = decrypted_payload[i]
+    return True
+
 
 class TestClassMethods(unittest.TestCase):
 
@@ -42,7 +55,7 @@ class TestClassMethods(unittest.TestCase):
         signed= SecureEnough.signed_request_create( request_data , secret=app_secret )
         ( verified , payload )= SecureEnough.signed_request_verify( signed , secret=app_secret )
         self.assertTrue( verified )
-        self.assertEquals( request_data , payload )
+        self.assertTrue( _validate_signed_request_payload( payload , request_data ) )
 
     def test_signed_request_verify_failure_invalid_signature(self):
         request_data= data.copy()
@@ -74,7 +87,7 @@ class TestClassMethods(unittest.TestCase):
         signed= SecureEnough.signed_request_create( request_data , secret=app_secret , issued_at=issued_at)
         ( verified , payload )= SecureEnough.signed_request_verify( signed , secret=app_secret , timeout=100 )
         self.assertTrue( verified )
-        self.assertEquals( request_data , payload )
+        self.assertTrue( _validate_signed_request_payload( payload , request_data ) )
 
     def test_signed_request_create_and_verify_with_timeout_failure(self):
         request_data= data.copy()
@@ -83,7 +96,7 @@ class TestClassMethods(unittest.TestCase):
         signed= SecureEnough.signed_request_create( request_data , secret=app_secret , issued_at=issued_at)
         ( verified , payload )= SecureEnough.signed_request_verify( signed , secret=app_secret , timeout=1000)
         self.assertFalse( verified )
-        self.assertEquals( request_data , payload )
+        self.assertTrue( _validate_signed_request_payload( payload , request_data ) )
 
         
 
@@ -159,4 +172,36 @@ class TestFactoryMethods(unittest.TestCase):
         encrypted=  encryptionFactory.encode( data , hashtime=True )
         decrypted=  encryptionFactory.decode( encrypted , hashtime=True )
         self.assertEquals( data , decrypted )
+
+
+
+class TestVerificationMethods(unittest.TestCase):
+
+    def test_signed_request_invalid__json(self):
+        request_data= data.copy()
+        issued_at= int(time())
+        signed = SecureEnough.signed_request_create( request_data , secret=app_secret , issued_at=issued_at)
+        
+        ## alter the payload
+        signed = signed[::-1]
+        self.assertRaises(\
+        	insecure_but_secure_enough.InvalidPayload,
+        	lambda:SecureEnough.signed_request_verify( signed , secret=app_secret )
+        )
+
+    def test_signed_request_invalid__json(self):
+        request_data= data.copy()
+        issued_at= int(time())
+        signed = SecureEnough.signed_request_create( request_data , secret=app_secret , issued_at=issued_at)
+        
+        ## alter the payload
+        signed = signed[::-1]
+        self.assertRaises(\
+        	insecure_but_secure_enough.InvalidPayload,
+        	lambda:SecureEnough.signed_request_verify( signed , secret=app_secret )
+        )
+
+
+
+
 
