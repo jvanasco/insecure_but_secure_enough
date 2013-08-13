@@ -15,7 +15,7 @@ requires = [
     ]
 
 setup(name="insecure_but_secure_enough",
-      version="0.0.2",
+      version="0.0.3",
       description="Lightweight tools for signing and encrypting cookies, urls and stuff. This package isn't really secure, but its secure enough for most needs.",
       long_description=README,
       classifiers=[

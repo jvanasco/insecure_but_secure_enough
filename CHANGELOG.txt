@@ -1,3 +1,6 @@
+0.0.3
+	- packaging fixes
+
 0.0.2
 	- added InvalidPayload
 	- added shortcuts
