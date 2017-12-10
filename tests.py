@@ -7,6 +7,7 @@ import unittest
 
 # misc...
 from time import time
+import datetime
 
 rsa_key_private = """-----BEGIN RSA PRIVATE KEY-----
 Proc-Type: 4,ENCRYPTED
@@ -186,3 +187,21 @@ class TestVerificationMethods(unittest.TestCase):
             insecure_but_secure_enough.InvalidPayload,
             lambda: SecureEnough.signed_request_verify(signed, secret=app_secret)
         )
+
+    def test_encryption_timeout(self):
+        encryptionFactory = SecureEnough(
+            app_secret = app_secret,
+            use_rsa_encryption = True,
+            rsa_key_private = rsa_key_private,
+            rsa_key_private_passphrase = rsa_key_private_passphrase
+        )
+        request_data = data.copy()
+        issued_at = int(time()) - datetime.timedelta(days=100).total_seconds()
+        timeout_bad = datetime.timedelta(days=10).total_seconds()
+        timeout_good = datetime.timedelta(days=1000).total_seconds()
+        encrypted = encryptionFactory.encode(data, hashtime=True, time_now=issued_at)
+        self.assertRaises(
+            insecure_but_secure_enough.InvalidTimeout,
+            lambda: encryptionFactory.decode(encrypted, hashtime=True, timeout=timeout_bad)
+        )
+        decrypted = encryptionFactory.decode(encrypted, hashtime=True, timeout=timeout_good)

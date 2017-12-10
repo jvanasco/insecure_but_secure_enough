@@ -1,3 +1,10 @@
+0.0.6
+	- added debug_hashtime method
+	- added some debugging tools
+
+0.0.5
+	- small cleanup, audit
+
 0.0.4
 	- flake8
 

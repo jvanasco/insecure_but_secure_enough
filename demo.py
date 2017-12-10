@@ -24,7 +24,8 @@ qLMvdCqApHakhoed8JcllCws7ulDomv0L88KWCCtrvQQSb4l+PgNyQ==
 rsa_key_private_passphrase = """tweet"""
 rsa_key_public = None
 
-data = {'hello': 'howareyou'}
+data = {'hello': 'howareyou',
+        }
 
 
 # create a factory for encryption
