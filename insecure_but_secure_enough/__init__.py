@@ -656,7 +656,6 @@ class SecureEnough(object):
                                                      algorithm=hmac_algorithm,
                                                      )
             if hash_expected != hash_received:
-                print hash_expected, hash_received
                 raise InvalidChecksum()
             if timeout:
                 time_now = int(time())
