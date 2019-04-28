@@ -31,8 +31,9 @@ setup(
     long_description=README,
     classifiers=[
         "Intended Audience :: Developers",
-        "Programming Language :: Python",
         "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 2",
+        "Programming Language :: Python :: 3",
     ],
     keywords="web pylons pyramid",
     author="Jonathan Vanasco",

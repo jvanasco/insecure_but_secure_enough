@@ -1,3 +1,4 @@
+import pdb
 """
 
 This package is insecure, but secure enough.
@@ -149,14 +150,14 @@ I need to build out the demo and the test suite to support it.
 
 
 """
-__VERSION__ = '0.0.6'
+__VERSION__ = '0.1.0'
 
 
 import base64
 import hashlib
 import hmac
 from time import time
-import types
+import six
 
 try:
     import simplejson as json
@@ -234,11 +235,13 @@ class AesCipherHolder(object):
         cipher = AES.new(self._aes_key, AES.MODE_CFB, self._aes_iv)
         return cipher
 
-    def encrypt(self, bytes):
-        return self.cipher().encrypt(bytes)
+    def encrypt(self, bytes_):
+        """PY3 requires bytes_"""
+        return self.cipher().encrypt(bytes_)
 
-    def decrypt(self, bytes):
-        return self.cipher().decrypt(bytes)
+    def decrypt(self, bytes_):
+        """PY3 requires bytes_"""
+        return self.cipher().decrypt(bytes_)
 
 
 class RsaKeyHolder(object):
@@ -264,25 +267,32 @@ class RsaKeyHolder(object):
         self.block_bytes = self.key_length_bytes - 2 * 20 - 2
         self.cipher = PKCS1_OAEP.new(self.key)
 
-    def encrypt(self, s):
+    def encrypt(self, bytes_):
+        """PY3 requires bytes_"""
         encrypted_blocks = []
-        for block in self.split_string(s, self.block_bytes):
+        for block in self.split_string(bytes_, self.block_bytes):
             encrypted_block = self.cipher.encrypt(block)
             encrypted_blocks.append(encrypted_block)
+        if six.PY3:
+            return b''.join(encrypted_blocks)
         return ''.join(encrypted_blocks)
 
-    def decrypt(self, s):
+    def decrypt(self, bytes_):
+        """PY3 requires bytes_"""
         decrypted_blocks = []
-        for block in self.split_string(s, self.key_length_bytes):
+        for block in self.split_string(bytes_, self.key_length_bytes):
             decrypted_block = self.cipher.decrypt(block)
             decrypted_blocks.append(decrypted_block)
+        if six.PY3:
+            return b''.join(decrypted_blocks)
         return ''.join(decrypted_blocks)
 
-    def split_string(self, s, block_size):
+    def split_string(self, bytes_, block_size):
+        """PY3 may require bytes_; not sure"""
         blocks = []
         start = 0
-        while start < len(s):
-            block = s[start:(start + block_size)]
+        while start < len(bytes_):
+            block = bytes_[start:(start + block_size)]
             blocks.append(block)
             start += block_size
         return blocks
@@ -293,14 +303,23 @@ class Obfuscator(object):
     obfuscation_secret = None
 
     def __init__(self, obfuscation_key, obfuscation_secret):
-        self.obfuscation_key = obfuscation_key
         self.obfuscation_secret = obfuscation_secret
-        self.obfuscation_secret = obfuscation_secret
-        self.obfuscation_key = obfuscation_key
         if not obfuscation_key:
-            self.obfuscation_key = hashlib.sha512(obfuscation_secret).digest() + hashlib.sha512(obfuscation_secret[::-1]).digest()
+            if six.PY3:
+                obfuscation_secret = obfuscation_secret.encode() if isinstance(obfuscation_secret, str) else obfuscation_secret
+            obfuscation_key = hashlib.sha512(obfuscation_secret).hexdigest() + hashlib.sha512(obfuscation_secret[::-1]).hexdigest()
+        self.obfuscation_key = obfuscation_key
 
     def obfuscate(self, text):
+        """
+        INPUT:
+            PY2 - text is `str`
+            PY3 - text is `str` or `bytes`
+        OUTPUT:
+            always returns `str`
+        """
+        if six.PY3:
+            text = text.decode() if not isinstance(text, str) else text
         # copy out our OBFUSCATE_KEY to the length of the text
         key = self.obfuscation_key * (len(text) // len(self.obfuscation_key) + 1)
 
@@ -439,13 +458,24 @@ class SecureEnough(object):
         return self._rsa_key
 
     @classmethod
-    def _base64_url_encode(cls, text):
+    def _base64_url_encode(cls, bytes_):
         """
         internal classmethod for b64 encoding.
         this is just wrapping base64.urlsafe_b64encode,
         to allow for a later switch
+        
+        INPUT:
+            PY2: `str`
+            PY3: `bytes`
+        OUTPUT:
+            this ALWAYS returns `str`
         """
-        padded_b64 = base64.urlsafe_b64encode(text)
+        if six.PY3:
+            if isinstance(bytes_, str):
+                raise ValueError('_base64_url_encode not provided `bytes``')
+        padded_b64 = base64.urlsafe_b64encode(bytes_)
+        if six.PY3:
+            padded_b64 = padded_b64.decode()  # bytes to string
         return padded_b64.replace('=', '')  # = is a reserved char
 
     @classmethod
@@ -453,10 +483,17 @@ class SecureEnough(object):
         """
         internal classmethod for b64 decoding. this is essentially wrapping
         base64.base64_url_decode, to allow for a later switch
+
+        INPUT:
+            PY2: `str`
+            PY3: `bytes`
+        OUTPUT:
+            this ALWAYS returns `bytes`
         """
         padding_factor = (4 - len(inp) % 4) % 4
         inp += "=" * padding_factor
-        return base64.urlsafe_b64decode(inp)
+        decoded = base64.urlsafe_b64decode(inp)
+        return decoded
 
     @classmethod
     def _digestmod(cls, algorithm=None):
@@ -489,11 +526,20 @@ class SecureEnough(object):
         _data['algorithm'] = algorithm
         if issued_at and 'issued_at' not in _data:
             _data['issued_at'] = issued_at
-        payload = cls._base64_url_encode(json.dumps(_data))
+        payload = json.dumps(_data)
+        if six.PY3:
+            payload = payload.encode()  # str to bytes
+        payload = cls._base64_url_encode(payload)
+        if six.PY3:
+            payload = payload.encode()  # str to bytes
+            secret = secret.encode() if isinstance(secret, str) else secret
+            # hmac.new(secret,msg=payload,digestmod=digestmod).hexdigest()
         signature = hmac.new(secret,
                              msg=payload,
                              digestmod=digestmod,
                              ).hexdigest()
+        if six.PY3:
+            return signature + '.' + payload.decode()  # bytes to string
         return signature + '.' + payload
 
     @classmethod
@@ -520,13 +566,17 @@ class SecureEnough(object):
             decoded_signature = cls._base64_url_decode(signature)
             payload_decoded = cls._base64_url_decode(payload)
             data = json.loads(payload_decoded)
-        except json.JSONDecodeError, e:
-            raise InvalidPayload(e.msg)
+        except json.JSONDecodeError as exc:
+            raise InvalidPayload(exc.msg)
         except:
             raise InvalidPayload("Can't decode payload (_base64 error?)")
 
         if data.get('algorithm').upper() != algorithm:
             raise InvalidAlgorithm('unexpected algorithm.  Wanted %s, Received %s' % (algorithm, data.get('algorithm')))
+
+        if six.PY3:
+            secret = secret.encode() if isinstance(secret, str) else secret
+            payload = payload.encode() if isinstance(payload, str) else secret
 
         expected_sig = hmac.new(secret,
                                 msg=payload,
@@ -549,18 +599,29 @@ class SecureEnough(object):
         return (True, data)
 
     def _serialize(self, data):
-        """internal function to serialize multiple data types for transmission"""
+        """
+        internal function to serialize multiple data types for transmission
+        input:
+            data may be one of: `dict`, `list`, `tuple`, `string`
+        output
+            PY2: string
+            PY3: bytes
+        """
         serialized = None
-        if isinstance(data, types.DictType):
+        if isinstance(data, dict):
             serialized = json.dumps(data)
-        elif isinstance(data, types.ListType) or isinstance(data, types.TupleType):
-            assert '|' not in ''.join(data)
+        elif isinstance(data, list) or isinstance(data, tuple):
             serialized = '|'.join(data)
-        elif isinstance(data, types.StringTypes):
-            assert '|' not in data
+            if '|' in serialized:
+                raise ValueError("`|` only allowed in dicts")
+        elif isinstance(data, str):
             serialized = data
+            if '|' in serialized:
+                raise ValueError("`|` only allowed in dicts")
         else:
             raise TypeError('invalid type for serialization')
+        if six.PY3:
+            serialized = serialized.encode()  # string to bytes
         return serialized
 
     def _deserialize(self, serialized):
@@ -579,10 +640,20 @@ class SecureEnough(object):
         """
         internal function. calcuates an hmac for a timestamp.
         to accomplish this, we just pad the payload with the given timestamp
+        
+        input:
+            PY2: payload = string
+            PY3: payload = bytes
+        returns:
+            always returns a string
         """
         digestmod = self._digestmod(algorithm)
         message = "%s||%s" % (payload, timestamp)
         app_secret = self.app_secret(timestamp=timestamp)
+        if six.PY3:
+            app_secret = app_secret.encode() if isinstance(app_secret, str) else app_secret
+            message = message.encode()
+            # hmac.new(app_secret,msg=message,digestmod=digestmod).hexdigest()
         return hmac.new(app_secret,
                         msg=message,
                         digestmod=digestmod
@@ -613,7 +684,7 @@ class SecureEnough(object):
         # .. optionally include lightweight obfuscation
         if self.use_obfuscation:
             payload = self.obfuscator(timestamp=time_now).obfuscate(payload)
-
+        
         # .. optionally encrypt the payload
         if self.use_rsa_encryption:
             payload = self.rsa_key(timestamp=time_now).encrypt(payload)
@@ -666,7 +737,6 @@ class SecureEnough(object):
 
         # decoding is done in reverse of encoding
         # so decrypt, then deobfuscate
-
         payload = self._base64_url_decode(payload)
 
         if self.use_rsa_encryption:

@@ -112,7 +112,7 @@ class TestFactoryMethods(unittest.TestCase):
 
         encrypted = encryptionFactory.encode(data, hashtime=False)
         decrypted = encryptionFactory.decode(encrypted, hashtime=False)
-        self.assertEquals(data, decrypted)
+        self.assertEqual(data, decrypted)
 
     def test_encryption_with_hashtime(self):
         encryptionFactory = SecureEnough(
@@ -123,7 +123,7 @@ class TestFactoryMethods(unittest.TestCase):
         )
         encrypted = encryptionFactory.encode(data, hashtime=True)
         decrypted = encryptionFactory.decode(encrypted, hashtime=True)
-        self.assertEquals(data, decrypted)
+        self.assertEqual(data, decrypted)
 
     def test_obfuscation_without_hashtime(self):
         encryptionFactory = SecureEnough(
@@ -134,7 +134,7 @@ class TestFactoryMethods(unittest.TestCase):
         )
         encrypted = encryptionFactory.encode(data, hashtime=False)
         decrypted = encryptionFactory.decode(encrypted, hashtime=False)
-        self.assertEquals(data, decrypted)
+        self.assertEqual(data, decrypted)
 
     def test_obfuscation_with_hashtime(self):
         encryptionFactory = SecureEnough(
@@ -145,7 +145,7 @@ class TestFactoryMethods(unittest.TestCase):
         )
         encrypted = encryptionFactory.encode(data, hashtime=True)
         decrypted = encryptionFactory.decode(encrypted, hashtime=True)
-        self.assertEquals(data, decrypted)
+        self.assertEqual(data, decrypted)
 
     def test_encryption_and_obfuscation_without_hashtime(self):
         encryptionFactory = SecureEnough(
@@ -158,7 +158,7 @@ class TestFactoryMethods(unittest.TestCase):
         )
         encrypted = encryptionFactory.encode(data, hashtime=False)
         decrypted = encryptionFactory.decode(encrypted, hashtime=False)
-        self.assertEquals(data, decrypted)
+        self.assertEqual(data, decrypted)
 
     def test_encryption_and_obfuscation_with_hashtime(self):
         encryptionFactory = SecureEnough(
@@ -171,7 +171,7 @@ class TestFactoryMethods(unittest.TestCase):
         )
         encrypted = encryptionFactory.encode(data, hashtime=True)
         decrypted = encryptionFactory.decode(encrypted, hashtime=True)
-        self.assertEquals(data, decrypted)
+        self.assertEqual(data, decrypted)
 
 
 class TestVerificationMethods(unittest.TestCase):
@@ -200,6 +200,8 @@ class TestVerificationMethods(unittest.TestCase):
         timeout_bad = datetime.timedelta(days=10).total_seconds()
         timeout_good = datetime.timedelta(days=1000).total_seconds()
         encrypted = encryptionFactory.encode(data, hashtime=True, time_now=issued_at)
+        print("encrypted? ", encrypted)
+        
         self.assertRaises(
             insecure_but_secure_enough.InvalidTimeout,
             lambda: encryptionFactory.decode(encrypted, hashtime=True, timeout=timeout_bad)

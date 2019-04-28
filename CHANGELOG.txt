@@ -1,3 +1,6 @@
+0.1.0
+	- python3 support
+
 0.0.6
 	- added debug_hashtime method
 	- added some debugging tools
