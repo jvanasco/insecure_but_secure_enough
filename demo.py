@@ -1,3 +1,5 @@
+from __future__  import print_function
+
 from insecure_but_secure_enough import SecureEnough
 
 
@@ -51,104 +53,103 @@ signingFactory = SecureEnough(
 )
 
 
-print ""
-print "**********************************************************************"
-print ""
+print("")
+print("**********************************************************************")
+print("")
 
-print "Illustrating Encryption..."
-print """Encryption is the most secure option. """
-print "-----------------------------------"
-print """Let's use an RSA key to encrypt the payload.  """
+print("Illustrating Encryption...")
+print("""Encryption is the most secure option. """)
+print("-----------------------------------")
+print("""Let's use an RSA key to encrypt the payload.  """)
+
 encrypted = encryptionFactory.encode(data, hashtime=True)
 decrypted = encryptionFactory.decode(encrypted, hashtime=True)
-print "    data - %s" % data
-print "    encrypted (rsa) - %s" % encrypted
-print "    decrypted (rsa) - %s" % decrypted
-print "-----------------------------------"
-print """Let's use an AES cipher to encrypt the payload.  """
+print("    data - %s" % data)
+print("    encrypted (rsa) - %s" % encrypted)
+print("    decrypted (rsa) - %s" % decrypted)
+print("-----------------------------------")
+print("""Let's use an AES cipher to encrypt the payload.  """)
+
 encrypted = encryptionFactoryAES.encode(data)
 decrypted = encryptionFactoryAES.decode(encrypted)
-print "    data - %s" % data
-print "    encrypted (aes)- %s" % encrypted
-print "    decrypted (aes)- %s" % decrypted
+print("    data - %s" % data)
+print("    encrypted (aes)- %s" % encrypted)
+print("    decrypted (aes)- %s" % decrypted)
+
+print("")
+print("**********************************************************************")
+print("")
 
 
-print ""
-print "**********************************************************************"
-print ""
+print("Illustrating Signing Data...")
+print("""Signing data doesn't encrypt anything. It merely creates a signature to verify the payload.""")
+print("-----------------------------------")
+print("""Raw Data.""")
+print("""The simplest.  No signature.  Just raw data that is encoded & serialized for transport.""")
 
-
-print "Illustrating Signing Data..."
-print """Signing data doesn't encrypt anything. It merely creates a signature to verify the payload."""
-print "-----------------------------------"
-print """Raw Data."""
-print """The simplest.  No signature.  Just raw data that is encoded & serialized for transport."""
 raw_data = signingFactory.encode(data, hashtime=False)
 raw_data_validated = signingFactory.decode(raw_data, hashtime=False)
-print "    data - %s" % data
-print "    raw_data () - %s" % raw_data
-print "    validated () - %s" % raw_data_validated
-print "-----------------------------------"
-print """HMAC signature (SHA1)"""
-print """Creates a payload that looks like (serialized_data|timestamp|digest).  digest is built off serialized_data+timestamp+app_secret """
+print("    data - %s" % data)
+print("    raw_data () - %s" % raw_data)
+print("    validated () - %s" % raw_data_validated)
+print("-----------------------------------")
+print("""HMAC signature (SHA1)""")
+print("""Creates a payload that looks like (serialized_data|timestamp|digest).  digest is built off serialized_data+timestamp+app_secret """)
+
 signed_sha1 = signingFactory.encode(data, hashtime=True)
 signed_sha1_validated = signingFactory.decode(signed_sha1, hashtime=True)
-print "    data - %s" % data
-print "	   payload  - %s" % signed_sha1
-print "	   validated - %s" % signed_sha1_validated
-print "-----------------------------------"
-print """HMAC signature (SHA256)"""
-print """Creates a payload that looks like (serialized_data|timestamp|digest).  digest is built off serialized_data+timestamp+app_secret """
+print("    data - %s" % data)
+print("	   payload  - %s" % signed_sha1)
+print("	   validated - %s" % signed_sha1_validated)
+print("-----------------------------------")
+print("""HMAC signature (SHA256)""")
+print("""Creates a payload that looks like (serialized_data|timestamp|digest).  digest is built off serialized_data+timestamp+app_secret """)
+
 signed_sha256 = signingFactory.encode(data, hashtime=True, hmac_algorithm="HMAC-SHA256")
 signed_sha256_validated = signingFactory.decode(signed_sha256, hashtime=True, hmac_algorithm="HMAC-SHA256")
-print "    data - %s" % data
-print "    payload - %s" % signed_sha256
-print "    validated - %s" % signed_sha256_validated
+print("    data - %s" % data)
+print("    payload - %s" % signed_sha256)
+print("    validated - %s" % signed_sha256_validated)
+print("")
 
+print("**********************************************************************")
+print("")
+print("")
+print("Illustrating Signed Requests...")
+print("This is another implementation of HMAC-256, but in a format that is compatible with Facebook and some other sites")
+print("Note this is a classmethod, not an object method")
+print("Note that we return a tuple (valid, payload) AND the payload contains the algorithm")
 
-print ""
-print "**********************************************************************"
-print ""
-
-print ""
-print "Illustrating Signed Requests..."
-print "This is another implementation of HMAC-256, but in a format that is compatible with Facebook and some other sites"
-print "Note this is a classmethod, not an object method"
-print "Note that we return a tuple (valid, payload) AND the payload contains the algorithm"
 request_signed = SecureEnough.signed_request_create(data, secret='123')
 request_verified = SecureEnough.signed_request_verify(request_signed, secret='123')
-print "    data - %s" % data
-print "    payload | %s" % request_signed
-print "    validated | %s" % str(request_verified)
-print ""
+print("    data - %s" % data)
+print("    payload | %s" % request_signed)
+print("    validated | %s" % str(request_verified))
+print("")
+print("")
 
-
-print ""
-print "**********************************************************************"
-print ""
-
-print "Illustrating Shortcuts..."
-print "----"
+print("**********************************************************************")
+print("")
+print("Illustrating Shortcuts...")
+print("----")
 
 serialized_plaintext_encode = signingFactory.serialized_plaintext_encode(data)
 serialized_plaintext_decode = signingFactory.serialized_plaintext_decode(serialized_plaintext_encode)
-print ""
-print "serialized_plaintext_encode = %s" % serialized_plaintext_encode
-print "serialized_plaintext_decode = %s" % serialized_plaintext_decode
-print ""
-
+print("")
+print("serialized_plaintext_encode = %s" % serialized_plaintext_encode)
+print("serialized_plaintext_decode = %s" % serialized_plaintext_decode)
+print("")
 
 hmac_sha1_encode = signingFactory.hmac_sha1_encode(data)
 hmac_sha1_decode = signingFactory.hmac_sha1_decode(hmac_sha1_encode)
-print ""
-print "hmac_sha1_encode = %s" % hmac_sha1_encode
-print "hmac_sha1_decode = %s" % hmac_sha1_decode
-print ""
-
+print("")
+print("hmac_sha1_encode = %s" % hmac_sha1_encode)
+print("hmac_sha1_decode = %s" % hmac_sha1_decode)
+print("")
 
 hmac_sha256_encode = signingFactory.hmac_sha256_encode(data)
 hmac_sha256_decode = signingFactory.hmac_sha256_decode(hmac_sha256_encode)
-print ""
-print "hmac_sha256_encode = %s" % hmac_sha256_encode
-print "hmac_sha256_decode = %s" % hmac_sha256_decode
-print ""
+print("")
+print("hmac_sha256_encode = %s" % hmac_sha256_encode)
+print("hmac_sha256_decode = %s" % hmac_sha256_decode)
+print("")

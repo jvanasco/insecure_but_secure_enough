@@ -1,4 +1,3 @@
-import pdb
 """
 
 This package is insecure, but secure enough.
@@ -146,9 +145,7 @@ actually secure, it is Secure Enough for most web applications.
 The timebased providers is entirely untested.
 I need to build out the demo and the test suite to support it.
 
-/__init__.py is released under the MIT license
-
-
+insecure_but_secure_enough is released under the MIT license
 """
 __VERSION__ = '0.1.0'
 
@@ -199,6 +196,32 @@ class InvalidTimeout(Invalid):
     pass
 
 
+def _base64_url_encode__py2(bytestring):
+    """
+    private method for b64 encoding.
+    this is just wrapping base64.urlsafe_b64encode,
+    to allow for a later switch
+    OUTPUT:
+        this ALWAYS returns `str`
+    """
+    padded_b64 = base64.urlsafe_b64encode(bytestring)
+    return padded_b64.replace('=', '')  # = is a reserved char
+
+
+def _base64_url_encode__py3(bytes_):
+    """
+    private method for b64 encoding.
+    this is just wrapping base64.urlsafe_b64encode,
+    to allow for a later switch
+    OUTPUT:
+        this ALWAYS returns `str`
+    """
+    bytes_ = bytes_.encode() if isinstance(bytes_, str) else bytes_
+    padded_b64 = base64.urlsafe_b64encode(bytes_)
+    padded_b64 = padded_b64.decode()  # bytes to string
+    return padded_b64.replace('=', '')  # = is a reserved char
+
+
 def split_hashed_format(payload):
     (signed_payload,
      time_then,
@@ -219,14 +242,16 @@ class AesCipherHolder(object):
     _aes_iv = None
 
     def __init__(self, secret):
+        if six.PY3:
+            secret = secret.encode() if isinstance(secret, str) else secret
         self._secret = secret
 
         # compute a 32-byte key
-        self._aes_key = hashlib.sha256(self._secret).digest()
+        self._aes_key = hashlib.sha256(secret).digest()
         assert len(self._aes_key) == 32
 
         # compute a 16-byte initialization vector
-        self._aes_iv = hashlib.md5(self._secret).digest()
+        self._aes_iv = hashlib.md5(secret).digest()
         assert len(self._aes_iv) == 16
 
     def cipher(self):
@@ -235,9 +260,10 @@ class AesCipherHolder(object):
         cipher = AES.new(self._aes_key, AES.MODE_CFB, self._aes_iv)
         return cipher
 
-    def encrypt(self, bytes_):
-        """PY3 requires bytes_"""
-        return self.cipher().encrypt(bytes_)
+    def encrypt(self, payload_string):
+        if six.PY3:
+            payload_string = payload_string.encode() if isinstance(payload_string, str) else payload_string
+        return self.cipher().encrypt(payload_string)
 
     def decrypt(self, bytes_):
         """PY3 requires bytes_"""
@@ -267,32 +293,53 @@ class RsaKeyHolder(object):
         self.block_bytes = self.key_length_bytes - 2 * 20 - 2
         self.cipher = PKCS1_OAEP.new(self.key)
 
-    def encrypt(self, bytes_):
-        """PY3 requires bytes_"""
+    def encrypt(self, payload_string):
         encrypted_blocks = []
-        for block in self.split_string(bytes_, self.block_bytes):
+        for block in self._split_string(payload_string, self.block_bytes):
             encrypted_block = self.cipher.encrypt(block)
             encrypted_blocks.append(encrypted_block)
         if six.PY3:
             return b''.join(encrypted_blocks)
         return ''.join(encrypted_blocks)
 
-    def decrypt(self, bytes_):
-        """PY3 requires bytes_"""
+    def decrypt_string(self, payload):
         decrypted_blocks = []
-        for block in self.split_string(bytes_, self.key_length_bytes):
+        for block in self._split_string(payload, self.key_length_bytes):
             decrypted_block = self.cipher.decrypt(block)
             decrypted_blocks.append(decrypted_block)
-        if six.PY3:
-            return b''.join(decrypted_blocks)
         return ''.join(decrypted_blocks)
 
-    def split_string(self, bytes_, block_size):
-        """PY3 may require bytes_; not sure"""
+    def decrypt_bytes(self, payload):
+        decrypted_blocks = []
+        for block in self._split_bytes(payload, self.key_length_bytes):
+            decrypted_block = self.cipher.decrypt(block)
+            decrypted_blocks.append(decrypted_block)
+        return b''.join(decrypted_blocks)
+
+    if six.PY3:
+        # py3 has us working on bytes
+        decrypt = decrypt_bytes
+    else:
+        decrypt = decrypt_string
+
+    def _split_string(self, payload_string, block_size):
+        "used in PY2 encoding+decoding and PY3 encoding"
         blocks = []
         start = 0
-        while start < len(bytes_):
-            block = bytes_[start:(start + block_size)]
+        while start < len(payload_string):
+            block = payload_string[start:(start + block_size)]
+            blocks.append(block)
+            start += block_size
+        if six.PY3:
+            return [b.encode() for b in blocks]  # PY3 wants bytes
+        return blocks
+
+    def _split_bytes(self, payload_bytes, block_size):
+        "only used in PY3 decoding"
+        blocks = []
+        start = 0
+        while start < len(payload_bytes):
+            block = payload_bytes[start:(start + block_size)]
             blocks.append(block)
             start += block_size
         return blocks
@@ -314,12 +361,11 @@ class Obfuscator(object):
         """
         INPUT:
             PY2 - text is `str`
-            PY3 - text is `str` or `bytes`
         OUTPUT:
             always returns `str`
         """
-        if six.PY3:
-            text = text.decode() if not isinstance(text, str) else text
+        # if six.PY3:
+        #    text = text.decode() if not isinstance(text, str) else text
         # copy out our OBFUSCATE_KEY to the length of the text
         key = self.obfuscation_key * (len(text) // len(self.obfuscation_key) + 1)
 
@@ -461,8 +507,6 @@ class SecureEnough(object):
     def _base64_url_encode(cls, bytes_):
         """
         internal classmethod for b64 encoding.
-        this is just wrapping base64.urlsafe_b64encode,
-        to allow for a later switch
         
         INPUT:
             PY2: `str`
@@ -471,12 +515,8 @@ class SecureEnough(object):
             this ALWAYS returns `str`
         """
         if six.PY3:
-            if isinstance(bytes_, str):
-                raise ValueError('_base64_url_encode not provided `bytes``')
-        padded_b64 = base64.urlsafe_b64encode(bytes_)
-        if six.PY3:
-            padded_b64 = padded_b64.decode()  # bytes to string
-        return padded_b64.replace('=', '')  # = is a reserved char
+            return _base64_url_encode__py3(bytes_)
+        return _base64_url_encode__py2(bytes_)
 
     @classmethod
     def _base64_url_decode(cls, inp):
@@ -488,7 +528,8 @@ class SecureEnough(object):
             PY2: `str`
             PY3: `bytes`
         OUTPUT:
-            this ALWAYS returns `bytes`
+            PY2 str
+            PY3 bytes
         """
         padding_factor = (4 - len(inp) % 4) % 4
         inp += "=" * padding_factor
@@ -620,8 +661,6 @@ class SecureEnough(object):
                 raise ValueError("`|` only allowed in dicts")
         else:
             raise TypeError('invalid type for serialization')
-        if six.PY3:
-            serialized = serialized.encode()  # string to bytes
         return serialized
 
     def _deserialize(self, serialized):
@@ -679,16 +718,20 @@ class SecureEnough(object):
         # encode the payload, which serializes it and possibly obfuscates it
 
         # .. first we serialize it
+        # the output of `._serialize()` will be a `str`
         payload = self._serialize(data)
 
         # .. optionally include lightweight obfuscation
         if self.use_obfuscation:
+            # the output of `.obfuscate()` will be a `str`
             payload = self.obfuscator(timestamp=time_now).obfuscate(payload)
         
         # .. optionally encrypt the payload
         if self.use_rsa_encryption:
+            # `.encrypt()` expects a `str` and returns a `str` or `bytes`
             payload = self.rsa_key(timestamp=time_now).encrypt(payload)
         elif self.use_aes_encryption:
+            # `.encrypt()` expects a `str` and returns a `str` or `bytes`
             payload = self.aes_cipher(timestamp=time_now).encrypt(payload)
 
         # finally urlencode it
@@ -737,6 +780,7 @@ class SecureEnough(object):
 
         # decoding is done in reverse of encoding
         # so decrypt, then deobfuscate
+        # this always returns bytes
         payload = self._base64_url_decode(payload)
 
         if self.use_rsa_encryption:
@@ -745,6 +789,8 @@ class SecureEnough(object):
             payload = self.aes_cipher(timestamp=time_then).decrypt(payload)
 
         if self.use_obfuscation:
+            if six.PY3:
+                payload = payload.decode()
             payload = self.obfuscator(timestamp=time_then).deobfuscate(payload)
 
         payload = self._deserialize(payload)

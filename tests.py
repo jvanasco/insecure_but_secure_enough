@@ -31,6 +31,9 @@ qLMvdCqApHakhoed8JcllCws7ulDomv0L88KWCCtrvQQSb4l+PgNyQ==
 rsa_key_private_passphrase = """tweet"""
 rsa_key_public = None
 
+
+aes_secret = 'insecure_but_secure_enough'
+
 data = {'hello': 'world!'}
 app_secret = '517353cr37'
 app_secret_wrong = 'not-the-app-secret'
@@ -48,6 +51,59 @@ def _validate_signed_request_payload(decrypted_payload, original_data, algorithm
         if i not in original_data:
             additions[i] = decrypted_payload[i]
     return True
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+class _RSA_Configuration(object):
+    """creates RSA factories"""
+
+    def _makeOne_encryption(self):
+        encryptionFactory = SecureEnough(
+            app_secret = app_secret,
+            use_rsa_encryption = True,
+            rsa_key_private = rsa_key_private,
+            rsa_key_private_passphrase = rsa_key_private_passphrase
+        )
+        return encryptionFactory
+
+    def _makeOne_encryption_obfuscation(self):
+        encryptionFactory = SecureEnough(
+            app_secret = app_secret,
+            use_rsa_encryption = True,
+            rsa_key_private = rsa_key_private,
+            rsa_key_private_passphrase = rsa_key_private_passphrase,
+            use_obfuscation = True,
+            obfuscation_secret = app_secret,
+        )
+        return encryptionFactory
+
+
+class _AES_Configuration(object):
+    """creates AES factories"""
+
+    def _makeOne_encryption(self):
+        encryptionFactory = SecureEnough(
+            app_secret = app_secret,
+            use_rsa_encryption = True,
+            rsa_key_private = rsa_key_private,
+            rsa_key_private_passphrase = rsa_key_private_passphrase
+        )
+        return encryptionFactory
+
+    def _makeOne_encryption_obfuscation(self):
+        encryptionFactory = SecureEnough(
+            app_secret = app_secret,
+            use_aes_encryption = True,
+            aes_secret = aes_secret,
+            use_obfuscation = True,
+            obfuscation_secret = app_secret,
+        )
+        return encryptionFactory
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 
 class TestClassMethods(unittest.TestCase):
@@ -100,81 +156,85 @@ class TestClassMethods(unittest.TestCase):
         self.assertTrue(_validate_signed_request_payload(payload, request_data))
 
 
-class TestFactoryMethods(unittest.TestCase):
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-    def test_encryption_without_hashtime(self):
+
+class _TestFactoryMethods_Encrypted_core(object):
+    """
+    this is just a test harness
+    the test runners are:
+        TestFactoryMethods_Encrypted_RSA
+        TestFactoryMethods_Encrypted_AES
+    """
+
+    def _makeOne_obfuscation(self):
         encryptionFactory = SecureEnough(
             app_secret = app_secret,
-            use_rsa_encryption = True,
-            rsa_key_private = rsa_key_private,
-            rsa_key_private_passphrase = rsa_key_private_passphrase
+            use_obfuscation = True,
+            obfuscation_secret = app_secret,
         )
+        return encryptionFactory
 
+    def test_encryption_without_hashtime(self):
+        encryptionFactory = self._makeOne_encryption()
         encrypted = encryptionFactory.encode(data, hashtime=False)
         decrypted = encryptionFactory.decode(encrypted, hashtime=False)
         self.assertEqual(data, decrypted)
 
     def test_encryption_with_hashtime(self):
-        encryptionFactory = SecureEnough(
-            app_secret = app_secret,
-            use_rsa_encryption = True,
-            rsa_key_private = rsa_key_private,
-            rsa_key_private_passphrase = rsa_key_private_passphrase
-        )
+        encryptionFactory = self._makeOne_encryption()
         encrypted = encryptionFactory.encode(data, hashtime=True)
         decrypted = encryptionFactory.decode(encrypted, hashtime=True)
         self.assertEqual(data, decrypted)
 
     def test_obfuscation_without_hashtime(self):
-        encryptionFactory = SecureEnough(
-            app_secret = app_secret,
-            use_rsa_encryption = False,
-            use_obfuscation = True,
-            obfuscation_secret = app_secret,
-        )
+        encryptionFactory = self._makeOne_obfuscation()
         encrypted = encryptionFactory.encode(data, hashtime=False)
         decrypted = encryptionFactory.decode(encrypted, hashtime=False)
         self.assertEqual(data, decrypted)
 
     def test_obfuscation_with_hashtime(self):
-        encryptionFactory = SecureEnough(
-            app_secret = app_secret,
-            use_rsa_encryption = False,
-            use_obfuscation = True,
-            obfuscation_secret = app_secret,
-        )
+        encryptionFactory = self._makeOne_obfuscation()
         encrypted = encryptionFactory.encode(data, hashtime=True)
         decrypted = encryptionFactory.decode(encrypted, hashtime=True)
         self.assertEqual(data, decrypted)
 
     def test_encryption_and_obfuscation_without_hashtime(self):
-        encryptionFactory = SecureEnough(
-            app_secret = app_secret,
-            use_rsa_encryption = True,
-            rsa_key_private = rsa_key_private,
-            rsa_key_private_passphrase = rsa_key_private_passphrase,
-            use_obfuscation = True,
-            obfuscation_secret = app_secret,
-        )
+        encryptionFactory = self._makeOne_encryption_obfuscation()
         encrypted = encryptionFactory.encode(data, hashtime=False)
         decrypted = encryptionFactory.decode(encrypted, hashtime=False)
         self.assertEqual(data, decrypted)
 
     def test_encryption_and_obfuscation_with_hashtime(self):
-        encryptionFactory = SecureEnough(
-            app_secret = app_secret,
-            use_rsa_encryption = True,
-            rsa_key_private = rsa_key_private,
-            rsa_key_private_passphrase = rsa_key_private_passphrase,
-            use_obfuscation = True,
-            obfuscation_secret = app_secret,
-        )
+        encryptionFactory = self._makeOne_encryption_obfuscation()
         encrypted = encryptionFactory.encode(data, hashtime=True)
         decrypted = encryptionFactory.decode(encrypted, hashtime=True)
         self.assertEqual(data, decrypted)
 
 
-class TestVerificationMethods(unittest.TestCase):
+class TestFactoryMethods_Encrypted_RSA(unittest.TestCase, _RSA_Configuration, _TestFactoryMethods_Encrypted_core,):
+    """
+    uses encryptionFactory defined in `_RSA_Configuration`
+    to run tests defined in `_TestFactoryMethods_Encrypted_core`
+    """
+    pass
+
+
+class TestFactoryMethods_Encrypted_AES(unittest.TestCase, _AES_Configuration, _TestFactoryMethods_Encrypted_core, ):
+    """
+    uses encryptionFactory defined in `_AES_Configuration`
+    to run tests defined in `_TestFactoryMethods_Encrypted_core`
+    """
+    pass
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+class TestVerificationMethods_Generic(unittest.TestCase):
+    """
+    This is a generic terstrunner
+    """
 
     def test_signed_request_invalid__json(self):
         request_data = data.copy()
@@ -188,22 +248,109 @@ class TestVerificationMethods(unittest.TestCase):
             lambda: SecureEnough.signed_request_verify(signed, secret=app_secret)
         )
 
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+class _TestVerificationMethods_Encrypted_core(object):
+    """
+    this is just a test harness
+    the test runners are:
+        TestVerificationMethods_Encrypted_RSA
+        TestVerificationMethods_Encrypted_AES
+    """
+
     def test_encryption_timeout(self):
-        encryptionFactory = SecureEnough(
-            app_secret = app_secret,
-            use_rsa_encryption = True,
-            rsa_key_private = rsa_key_private,
-            rsa_key_private_passphrase = rsa_key_private_passphrase
-        )
+        encryptionFactory = self._makeOne_encryption()
         request_data = data.copy()
         issued_at = int(time()) - datetime.timedelta(days=100).total_seconds()
         timeout_bad = datetime.timedelta(days=10).total_seconds()
         timeout_good = datetime.timedelta(days=1000).total_seconds()
         encrypted = encryptionFactory.encode(data, hashtime=True, time_now=issued_at)
-        print("encrypted? ", encrypted)
         
         self.assertRaises(
             insecure_but_secure_enough.InvalidTimeout,
             lambda: encryptionFactory.decode(encrypted, hashtime=True, timeout=timeout_bad)
         )
         decrypted = encryptionFactory.decode(encrypted, hashtime=True, timeout=timeout_good)
+
+
+class TestVerificationMethods_Encrypted_RSA(unittest.TestCase, _RSA_Configuration, _TestVerificationMethods_Encrypted_core):
+    """
+    uses encryptionFactory defined in `_RSA_Configuration`
+    to run tests defined in `_TestVerificationMethods_Encrypted_core`
+    """
+    pass
+
+
+
+class TestVerificationMethods_Encrypted_AES(unittest.TestCase, _AES_Configuration, _TestVerificationMethods_Encrypted_core):
+    """
+    uses encryptionFactory defined in `_AES_Configuration`
+    to run tests defined in `_TestVerificationMethods_Encrypted_core`
+    """
+    pass
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+class _TestEncryptionUtilities_Encrypted_core(object):
+    """
+    this is just a test harness
+    the test runners are:
+        TestEncryptionUtilities_Encrypted_RSA
+        TestEncryptionUtilities_Encrypted_AES
+    """
+
+    def test_debug_hashtime(self):
+        encryptionFactory = self._makeOne_encryption()
+        request_data = data.copy()
+        issued_at = int(time()) - datetime.timedelta(days=100).total_seconds()
+        encrypted = encryptionFactory.encode(data, hashtime=True, time_now=issued_at)
+
+        # ensure we can do a bunch of miscellaneous functions
+        payload = encryptionFactory.debug_hashtime(encrypted)
+        self.assertEqual(payload['decoded'], request_data)
+
+        payload = encryptionFactory.debug_hashtime(encrypted, timeout=issued_at+100)
+        self.assertEqual(payload['decoded'], request_data)
+
+    def test_serialized_plaintext(self):
+        encryptionFactory = self._makeOne_encryption()
+        request_data = data.copy()
+        # roundtrip
+        payload = encryptionFactory.serialized_plaintext_encode(request_data)
+        payload = encryptionFactory.serialized_plaintext_decode(payload)
+        self.assertEqual(payload, request_data)
+
+    def test_hmac_sha1(self):
+        encryptionFactory = self._makeOne_encryption()
+        request_data = data.copy()
+        payload = encryptionFactory.hmac_sha1_encode(request_data)
+        payload = encryptionFactory.hmac_sha1_decode(payload)
+        self.assertEqual(payload, request_data)
+
+    def test_hmac_sha256(self):
+        encryptionFactory = self._makeOne_encryption()
+        request_data = data.copy()
+        payload = encryptionFactory.hmac_sha256_encode(request_data)
+        payload = encryptionFactory.hmac_sha256_decode(payload)
+        self.assertEqual(payload, request_data)
+
+
+class TestEncryptionUtilities_Encrypted_RSA(unittest.TestCase, _RSA_Configuration, _TestEncryptionUtilities_Encrypted_core):
+    """
+    uses encryptionFactory defined in `_RSA_Configuration`
+    to run tests defined in `_TestEncryptionUtilities_Encrypted_core`
+    """
+    pass
+
+
+
+class TestEncryptionUtilities_Encrypted_AES(unittest.TestCase, _AES_Configuration, _TestEncryptionUtilities_Encrypted_core):
+    """
+    uses encryptionFactory defined in `_AES_Configuration`
+    to run tests defined in `_TestEncryptionUtilities_Encrypted_core`
+    """
+    pass

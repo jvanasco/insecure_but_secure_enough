@@ -1,3 +1,5 @@
+from __future__  import print_function
+
 import hashlib
 import os
 import random
@@ -233,4 +235,4 @@ statements = [
 ]
 for s in statements:
     t = timeit.Timer(stmt=s, setup = "from __main__ import payload, factories, computed, tests ")
-    print "%s || %s || %s" % (n, t.timeit(n), s)
+    print("%s || %s || %s" % (n, t.timeit(n), s))
