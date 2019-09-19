@@ -12,17 +12,11 @@ README = README.split("\n\n", 1)[0] + "\n"
 
 # store version in the init.py
 with open(
-        os.path.join(
-            os.path.dirname(__file__),
-            'insecure_but_secure_enough', '__init__.py')) as v_file:
-    VERSION = re.compile(
-        r".*__VERSION__ = '(.*?)'",
-        re.S).match(v_file.read()).group(1)
+    os.path.join(os.path.dirname(__file__), "insecure_but_secure_enough", "__init__.py")
+) as v_file:
+    VERSION = re.compile(r".*__VERSION__ = '(.*?)'", re.S).match(v_file.read()).group(1)
 
-requires = [
-    'PyCrypto >= 2.6',
-    'simplejson',
-]
+requires = ["PyCrypto >= 2.6", "simplejson"]
 
 setup(
     name="insecure_but_secure_enough",
@@ -43,7 +37,7 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     zip_safe=False,
-    tests_require = requires,
-    install_requires = requires,
-    test_suite= 'tests',
+    tests_require=requires,
+    install_requires=requires,
+    test_suite="tests",
 )

@@ -32,14 +32,16 @@ rsa_key_private_passphrase = """tweet"""
 rsa_key_public = None
 
 
-aes_secret = 'insecure_but_secure_enough'
+aes_secret = "insecure_but_secure_enough"
 
-data = {'hello': 'world!'}
-app_secret = '517353cr37'
-app_secret_wrong = 'not-the-app-secret'
+data = {"hello": "world!"}
+app_secret = "517353cr37"
+app_secret_wrong = "not-the-app-secret"
 
 
-def _validate_signed_request_payload(decrypted_payload, original_data, algorithm='HMAC-SHA256', issued_at=None):
+def _validate_signed_request_payload(
+    decrypted_payload, original_data, algorithm="HMAC-SHA256", issued_at=None
+):
     # ensure everything ORIGINAL is DECRYPTED
     for i in original_data.keys():
         if i not in decrypted_payload:
@@ -61,21 +63,21 @@ class _RSA_Configuration(object):
 
     def _makeOne_encryption(self):
         encryptionFactory = SecureEnough(
-            app_secret = app_secret,
-            use_rsa_encryption = True,
-            rsa_key_private = rsa_key_private,
-            rsa_key_private_passphrase = rsa_key_private_passphrase
+            app_secret=app_secret,
+            use_rsa_encryption=True,
+            rsa_key_private=rsa_key_private,
+            rsa_key_private_passphrase=rsa_key_private_passphrase,
         )
         return encryptionFactory
 
     def _makeOne_encryption_obfuscation(self):
         encryptionFactory = SecureEnough(
-            app_secret = app_secret,
-            use_rsa_encryption = True,
-            rsa_key_private = rsa_key_private,
-            rsa_key_private_passphrase = rsa_key_private_passphrase,
-            use_obfuscation = True,
-            obfuscation_secret = app_secret,
+            app_secret=app_secret,
+            use_rsa_encryption=True,
+            rsa_key_private=rsa_key_private,
+            rsa_key_private_passphrase=rsa_key_private_passphrase,
+            use_obfuscation=True,
+            obfuscation_secret=app_secret,
         )
         return encryptionFactory
 
@@ -85,20 +87,20 @@ class _AES_Configuration(object):
 
     def _makeOne_encryption(self):
         encryptionFactory = SecureEnough(
-            app_secret = app_secret,
-            use_rsa_encryption = True,
-            rsa_key_private = rsa_key_private,
-            rsa_key_private_passphrase = rsa_key_private_passphrase
+            app_secret=app_secret,
+            use_rsa_encryption=True,
+            rsa_key_private=rsa_key_private,
+            rsa_key_private_passphrase=rsa_key_private_passphrase,
         )
         return encryptionFactory
 
     def _makeOne_encryption_obfuscation(self):
         encryptionFactory = SecureEnough(
-            app_secret = app_secret,
-            use_aes_encryption = True,
-            aes_secret = aes_secret,
-            use_obfuscation = True,
-            obfuscation_secret = app_secret,
+            app_secret=app_secret,
+            use_aes_encryption=True,
+            aes_secret=aes_secret,
+            use_obfuscation=True,
+            obfuscation_secret=app_secret,
         )
         return encryptionFactory
 
@@ -107,11 +109,12 @@ class _AES_Configuration(object):
 
 
 class TestClassMethods(unittest.TestCase):
-
     def test_signed_request_create_and_verify(self):
         request_data = data.copy()
         signed = SecureEnough.signed_request_create(request_data, secret=app_secret)
-        (verified, payload) = SecureEnough.signed_request_verify(signed, secret=app_secret)
+        (verified, payload) = SecureEnough.signed_request_verify(
+            signed, secret=app_secret
+        )
         self.assertTrue(verified)
         self.assertTrue(_validate_signed_request_payload(payload, request_data))
 
@@ -120,29 +123,35 @@ class TestClassMethods(unittest.TestCase):
         signed = SecureEnough.signed_request_create(request_data, secret=app_secret)
         self.assertRaises(
             insecure_but_secure_enough.InvalidSignature,
-            lambda: SecureEnough.signed_request_verify(signed, secret=app_secret_wrong)
+            lambda: SecureEnough.signed_request_verify(signed, secret=app_secret_wrong),
         )
 
     def test_signed_request_verify_failure_invalid_algoritm(self):
         request_data = data.copy()
         self.assertRaises(
             insecure_but_secure_enough.InvalidAlgorithm,
-            lambda: SecureEnough.signed_request_create(request_data, secret=app_secret, algorithm='md5')
+            lambda: SecureEnough.signed_request_create(
+                request_data, secret=app_secret, algorithm="md5"
+            ),
         )
 
     def test_signed_request_create_invalid_algoritm(self):
         request_data = data.copy()
-        request_data['algorithm'] = 'md5'
+        request_data["algorithm"] = "md5"
         self.assertRaises(
             insecure_but_secure_enough.InvalidAlgorithm,
-            lambda: SecureEnough.signed_request_create(request_data, secret=app_secret)
+            lambda: SecureEnough.signed_request_create(request_data, secret=app_secret),
         )
 
     def test_signed_request_create_and_verify_with_timeout(self):
         request_data = data.copy()
         issued_at = int(time())
-        signed = SecureEnough.signed_request_create(request_data, secret=app_secret, issued_at=issued_at)
-        (verified, payload) = SecureEnough.signed_request_verify(signed, secret=app_secret, timeout=100)
+        signed = SecureEnough.signed_request_create(
+            request_data, secret=app_secret, issued_at=issued_at
+        )
+        (verified, payload) = SecureEnough.signed_request_verify(
+            signed, secret=app_secret, timeout=100
+        )
         self.assertTrue(verified)
         self.assertTrue(_validate_signed_request_payload(payload, request_data))
 
@@ -150,8 +159,12 @@ class TestClassMethods(unittest.TestCase):
         request_data = data.copy()
         # pretend to issue this earlier...
         issued_at = int(time()) - 10000
-        signed = SecureEnough.signed_request_create(request_data, secret=app_secret, issued_at=issued_at)
-        (verified, payload) = SecureEnough.signed_request_verify(signed, secret=app_secret, timeout=1000)
+        signed = SecureEnough.signed_request_create(
+            request_data, secret=app_secret, issued_at=issued_at
+        )
+        (verified, payload) = SecureEnough.signed_request_verify(
+            signed, secret=app_secret, timeout=1000
+        )
         self.assertFalse(verified)
         self.assertTrue(_validate_signed_request_payload(payload, request_data))
 
@@ -169,9 +182,7 @@ class _TestFactoryMethods_Encrypted_core(object):
 
     def _makeOne_obfuscation(self):
         encryptionFactory = SecureEnough(
-            app_secret = app_secret,
-            use_obfuscation = True,
-            obfuscation_secret = app_secret,
+            app_secret=app_secret, use_obfuscation=True, obfuscation_secret=app_secret
         )
         return encryptionFactory
 
@@ -212,19 +223,25 @@ class _TestFactoryMethods_Encrypted_core(object):
         self.assertEqual(data, decrypted)
 
 
-class TestFactoryMethods_Encrypted_RSA(unittest.TestCase, _RSA_Configuration, _TestFactoryMethods_Encrypted_core,):
+class TestFactoryMethods_Encrypted_RSA(
+    unittest.TestCase, _RSA_Configuration, _TestFactoryMethods_Encrypted_core
+):
     """
     uses encryptionFactory defined in `_RSA_Configuration`
     to run tests defined in `_TestFactoryMethods_Encrypted_core`
     """
+
     pass
 
 
-class TestFactoryMethods_Encrypted_AES(unittest.TestCase, _AES_Configuration, _TestFactoryMethods_Encrypted_core, ):
+class TestFactoryMethods_Encrypted_AES(
+    unittest.TestCase, _AES_Configuration, _TestFactoryMethods_Encrypted_core
+):
     """
     uses encryptionFactory defined in `_AES_Configuration`
     to run tests defined in `_TestFactoryMethods_Encrypted_core`
     """
+
     pass
 
 
@@ -239,13 +256,15 @@ class TestVerificationMethods_Generic(unittest.TestCase):
     def test_signed_request_invalid__json(self):
         request_data = data.copy()
         issued_at = int(time())
-        signed = SecureEnough.signed_request_create(request_data, secret=app_secret, issued_at=issued_at)
+        signed = SecureEnough.signed_request_create(
+            request_data, secret=app_secret, issued_at=issued_at
+        )
 
         # alter the payload
         signed = signed[::-1]
         self.assertRaises(
             insecure_but_secure_enough.InvalidPayload,
-            lambda: SecureEnough.signed_request_verify(signed, secret=app_secret)
+            lambda: SecureEnough.signed_request_verify(signed, secret=app_secret),
         )
 
 
@@ -267,28 +286,37 @@ class _TestVerificationMethods_Encrypted_core(object):
         timeout_bad = datetime.timedelta(days=10).total_seconds()
         timeout_good = datetime.timedelta(days=1000).total_seconds()
         encrypted = encryptionFactory.encode(data, hashtime=True, time_now=issued_at)
-        
+
         self.assertRaises(
             insecure_but_secure_enough.InvalidTimeout,
-            lambda: encryptionFactory.decode(encrypted, hashtime=True, timeout=timeout_bad)
+            lambda: encryptionFactory.decode(
+                encrypted, hashtime=True, timeout=timeout_bad
+            ),
         )
-        decrypted = encryptionFactory.decode(encrypted, hashtime=True, timeout=timeout_good)
+        decrypted = encryptionFactory.decode(
+            encrypted, hashtime=True, timeout=timeout_good
+        )
 
 
-class TestVerificationMethods_Encrypted_RSA(unittest.TestCase, _RSA_Configuration, _TestVerificationMethods_Encrypted_core):
+class TestVerificationMethods_Encrypted_RSA(
+    unittest.TestCase, _RSA_Configuration, _TestVerificationMethods_Encrypted_core
+):
     """
     uses encryptionFactory defined in `_RSA_Configuration`
     to run tests defined in `_TestVerificationMethods_Encrypted_core`
     """
+
     pass
 
 
-
-class TestVerificationMethods_Encrypted_AES(unittest.TestCase, _AES_Configuration, _TestVerificationMethods_Encrypted_core):
+class TestVerificationMethods_Encrypted_AES(
+    unittest.TestCase, _AES_Configuration, _TestVerificationMethods_Encrypted_core
+):
     """
     uses encryptionFactory defined in `_AES_Configuration`
     to run tests defined in `_TestVerificationMethods_Encrypted_core`
     """
+
     pass
 
 
@@ -311,10 +339,10 @@ class _TestEncryptionUtilities_Encrypted_core(object):
 
         # ensure we can do a bunch of miscellaneous functions
         payload = encryptionFactory.debug_hashtime(encrypted)
-        self.assertEqual(payload['decoded'], request_data)
+        self.assertEqual(payload["decoded"], request_data)
 
-        payload = encryptionFactory.debug_hashtime(encrypted, timeout=issued_at+100)
-        self.assertEqual(payload['decoded'], request_data)
+        payload = encryptionFactory.debug_hashtime(encrypted, timeout=issued_at + 100)
+        self.assertEqual(payload["decoded"], request_data)
 
     def test_serialized_plaintext(self):
         encryptionFactory = self._makeOne_encryption()
@@ -339,18 +367,23 @@ class _TestEncryptionUtilities_Encrypted_core(object):
         self.assertEqual(payload, request_data)
 
 
-class TestEncryptionUtilities_Encrypted_RSA(unittest.TestCase, _RSA_Configuration, _TestEncryptionUtilities_Encrypted_core):
+class TestEncryptionUtilities_Encrypted_RSA(
+    unittest.TestCase, _RSA_Configuration, _TestEncryptionUtilities_Encrypted_core
+):
     """
     uses encryptionFactory defined in `_RSA_Configuration`
     to run tests defined in `_TestEncryptionUtilities_Encrypted_core`
     """
+
     pass
 
 
-
-class TestEncryptionUtilities_Encrypted_AES(unittest.TestCase, _AES_Configuration, _TestEncryptionUtilities_Encrypted_core):
+class TestEncryptionUtilities_Encrypted_AES(
+    unittest.TestCase, _AES_Configuration, _TestEncryptionUtilities_Encrypted_core
+):
     """
     uses encryptionFactory defined in `_AES_Configuration`
     to run tests defined in `_TestEncryptionUtilities_Encrypted_core`
     """
+
     pass

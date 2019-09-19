@@ -1,4 +1,4 @@
-from __future__  import print_function
+from __future__ import print_function
 
 from insecure_but_secure_enough import SecureEnough
 
@@ -26,30 +26,25 @@ qLMvdCqApHakhoed8JcllCws7ulDomv0L88KWCCtrvQQSb4l+PgNyQ==
 rsa_key_private_passphrase = """tweet"""
 rsa_key_public = None
 
-data = {'hello': 'howareyou',
-        }
+data = {"hello": "howareyou"}
 
 
 # create a factory for encryption
 encryptionFactory = SecureEnough(
-    app_secret = '517353cr37',
-    use_rsa_encryption = True,
-    rsa_key_private = rsa_key_private,
-    rsa_key_private_passphrase = rsa_key_private_passphrase
+    app_secret="517353cr37",
+    use_rsa_encryption=True,
+    rsa_key_private=rsa_key_private,
+    rsa_key_private_passphrase=rsa_key_private_passphrase,
 )
 
 encryptionFactoryAES = SecureEnough(
-    app_secret = '517353cr37',
-    use_aes_encryption = True,
-    aes_secret = '123124',
+    app_secret="517353cr37", use_aes_encryption=True, aes_secret="123124"
 )
 
 
 # create a factory for signing
 signingFactory = SecureEnough(
-    app_secret = '517353cr37',
-    use_rsa_encryption = False,
-    use_obfuscation = False
+    app_secret="517353cr37", use_rsa_encryption=False, use_obfuscation=False
 )
 
 
@@ -82,10 +77,14 @@ print("")
 
 
 print("Illustrating Signing Data...")
-print("""Signing data doesn't encrypt anything. It merely creates a signature to verify the payload.""")
+print(
+    """Signing data doesn't encrypt anything. It merely creates a signature to verify the payload."""
+)
 print("-----------------------------------")
 print("""Raw Data.""")
-print("""The simplest.  No signature.  Just raw data that is encoded & serialized for transport.""")
+print(
+    """The simplest.  No signature.  Just raw data that is encoded & serialized for transport."""
+)
 
 raw_data = signingFactory.encode(data, hashtime=False)
 raw_data_validated = signingFactory.decode(raw_data, hashtime=False)
@@ -94,7 +93,9 @@ print("    raw_data () - %s" % raw_data)
 print("    validated () - %s" % raw_data_validated)
 print("-----------------------------------")
 print("""HMAC signature (SHA1)""")
-print("""Creates a payload that looks like (serialized_data|timestamp|digest).  digest is built off serialized_data+timestamp+app_secret """)
+print(
+    """Creates a payload that looks like (serialized_data|timestamp|digest).  digest is built off serialized_data+timestamp+app_secret """
+)
 
 signed_sha1 = signingFactory.encode(data, hashtime=True)
 signed_sha1_validated = signingFactory.decode(signed_sha1, hashtime=True)
@@ -103,10 +104,14 @@ print("	   payload  - %s" % signed_sha1)
 print("	   validated - %s" % signed_sha1_validated)
 print("-----------------------------------")
 print("""HMAC signature (SHA256)""")
-print("""Creates a payload that looks like (serialized_data|timestamp|digest).  digest is built off serialized_data+timestamp+app_secret """)
+print(
+    """Creates a payload that looks like (serialized_data|timestamp|digest).  digest is built off serialized_data+timestamp+app_secret """
+)
 
 signed_sha256 = signingFactory.encode(data, hashtime=True, hmac_algorithm="HMAC-SHA256")
-signed_sha256_validated = signingFactory.decode(signed_sha256, hashtime=True, hmac_algorithm="HMAC-SHA256")
+signed_sha256_validated = signingFactory.decode(
+    signed_sha256, hashtime=True, hmac_algorithm="HMAC-SHA256"
+)
 print("    data - %s" % data)
 print("    payload - %s" % signed_sha256)
 print("    validated - %s" % signed_sha256_validated)
@@ -116,12 +121,16 @@ print("**********************************************************************")
 print("")
 print("")
 print("Illustrating Signed Requests...")
-print("This is another implementation of HMAC-256, but in a format that is compatible with Facebook and some other sites")
+print(
+    "This is another implementation of HMAC-256, but in a format that is compatible with Facebook and some other sites"
+)
 print("Note this is a classmethod, not an object method")
-print("Note that we return a tuple (valid, payload) AND the payload contains the algorithm")
+print(
+    "Note that we return a tuple (valid, payload) AND the payload contains the algorithm"
+)
 
-request_signed = SecureEnough.signed_request_create(data, secret='123')
-request_verified = SecureEnough.signed_request_verify(request_signed, secret='123')
+request_signed = SecureEnough.signed_request_create(data, secret="123")
+request_verified = SecureEnough.signed_request_verify(request_signed, secret="123")
 print("    data - %s" % data)
 print("    payload | %s" % request_signed)
 print("    validated | %s" % str(request_verified))
@@ -134,7 +143,9 @@ print("Illustrating Shortcuts...")
 print("----")
 
 serialized_plaintext_encode = signingFactory.serialized_plaintext_encode(data)
-serialized_plaintext_decode = signingFactory.serialized_plaintext_decode(serialized_plaintext_encode)
+serialized_plaintext_decode = signingFactory.serialized_plaintext_decode(
+    serialized_plaintext_encode
+)
 print("")
 print("serialized_plaintext_encode = %s" % serialized_plaintext_encode)
 print("serialized_plaintext_decode = %s" % serialized_plaintext_decode)

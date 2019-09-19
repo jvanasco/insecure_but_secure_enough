@@ -147,7 +147,7 @@ I need to build out the demo and the test suite to support it.
 
 insecure_but_secure_enough is released under the MIT license
 """
-__VERSION__ = '0.1.0'
+__VERSION__ = "0.1.1dev"
 
 
 import base64
@@ -168,31 +168,37 @@ from Crypto.PublicKey import RSA
 
 class Invalid(Exception):
     """Base class you can catch"""
+
     pass
 
 
 class InvalidAlgorithm(Invalid):
     """Raised when a secret it too old"""
+
     pass
 
 
 class InvalidChecksum(Invalid):
     """the checksums do not match"""
+
     pass
 
 
 class InvalidPayload(Invalid):
     """Raised when a payload can't be decoded"""
+
     pass
 
 
 class InvalidSignature(Invalid):
     """the signature does not match"""
+
     pass
 
 
 class InvalidTimeout(Invalid):
     """Raised when a signature is too old"""
+
     pass
 
 
@@ -205,7 +211,7 @@ def _base64_url_encode__py2(bytestring):
         this ALWAYS returns `str`
     """
     padded_b64 = base64.urlsafe_b64encode(bytestring)
-    return padded_b64.replace('=', '')  # = is a reserved char
+    return padded_b64.replace("=", "")  # = is a reserved char
 
 
 def _base64_url_encode__py3(bytes_):
@@ -219,23 +225,18 @@ def _base64_url_encode__py3(bytes_):
     bytes_ = bytes_.encode() if isinstance(bytes_, str) else bytes_
     padded_b64 = base64.urlsafe_b64encode(bytes_)
     padded_b64 = padded_b64.decode()  # bytes to string
-    return padded_b64.replace('=', '')  # = is a reserved char
+    return padded_b64.replace("=", "")  # = is a reserved char
 
 
 def split_hashed_format(payload):
-    (signed_payload,
-     time_then,
-     hash_received
-     ) = payload.split('|')
+    (signed_payload, time_then, hash_received) = payload.split("|")
     time_then = int(float(time_then))
-    return (signed_payload,
-            time_then,
-            hash_received
-            )
+    return (signed_payload, time_then, hash_received)
 
 
 class AesCipherHolder(object):
     """wraps an AES Symmetric Cipher"""
+
     _secret = None
     _cipher = None
     _aes_key = None
@@ -262,7 +263,11 @@ class AesCipherHolder(object):
 
     def encrypt(self, payload_string):
         if six.PY3:
-            payload_string = payload_string.encode() if isinstance(payload_string, str) else payload_string
+            payload_string = (
+                payload_string.encode()
+                if isinstance(payload_string, str)
+                else payload_string
+            )
         return self.cipher().encrypt(payload_string)
 
     def decrypt(self, bytes_):
@@ -272,6 +277,7 @@ class AesCipherHolder(object):
 
 class RsaKeyHolder(object):
     """wraps an RSA key"""
+
     key = None
     _key_private = None
     _key_private_passphrase = None
@@ -284,8 +290,7 @@ class RsaKeyHolder(object):
         self._key_private = key_private
         self._key_private_passphrase = key_private_passphrase
         if self._key_private_passphrase:
-            self.key = RSA.importKey(self._key_private,
-                                     self._key_private_passphrase, )
+            self.key = RSA.importKey(self._key_private, self._key_private_passphrase)
         else:
             self.key = RSA.importKey(self._key_private)
         self.key_length_bytes = int((self.key.size() + 1) / 8)
@@ -299,22 +304,22 @@ class RsaKeyHolder(object):
             encrypted_block = self.cipher.encrypt(block)
             encrypted_blocks.append(encrypted_block)
         if six.PY3:
-            return b''.join(encrypted_blocks)
-        return ''.join(encrypted_blocks)
+            return b"".join(encrypted_blocks)
+        return "".join(encrypted_blocks)
 
     def decrypt_string(self, payload):
         decrypted_blocks = []
         for block in self._split_string(payload, self.key_length_bytes):
             decrypted_block = self.cipher.decrypt(block)
             decrypted_blocks.append(decrypted_block)
-        return ''.join(decrypted_blocks)
+        return "".join(decrypted_blocks)
 
     def decrypt_bytes(self, payload):
         decrypted_blocks = []
         for block in self._split_bytes(payload, self.key_length_bytes):
             decrypted_block = self.cipher.decrypt(block)
             decrypted_blocks.append(decrypted_block)
-        return b''.join(decrypted_blocks)
+        return b"".join(decrypted_blocks)
 
     if six.PY3:
         # py3 has us working on bytes
@@ -327,7 +332,7 @@ class RsaKeyHolder(object):
         blocks = []
         start = 0
         while start < len(payload_string):
-            block = payload_string[start:(start + block_size)]
+            block = payload_string[start : (start + block_size)]
             blocks.append(block)
             start += block_size
         if six.PY3:
@@ -339,7 +344,7 @@ class RsaKeyHolder(object):
         blocks = []
         start = 0
         while start < len(payload_bytes):
-            block = payload_bytes[start:(start + block_size)]
+            block = payload_bytes[start : (start + block_size)]
             blocks.append(block)
             start += block_size
         return blocks
@@ -353,8 +358,15 @@ class Obfuscator(object):
         self.obfuscation_secret = obfuscation_secret
         if not obfuscation_key:
             if six.PY3:
-                obfuscation_secret = obfuscation_secret.encode() if isinstance(obfuscation_secret, str) else obfuscation_secret
-            obfuscation_key = hashlib.sha512(obfuscation_secret).hexdigest() + hashlib.sha512(obfuscation_secret[::-1]).hexdigest()
+                obfuscation_secret = (
+                    obfuscation_secret.encode()
+                    if isinstance(obfuscation_secret, str)
+                    else obfuscation_secret
+                )
+            obfuscation_key = (
+                hashlib.sha512(obfuscation_secret).hexdigest()
+                + hashlib.sha512(obfuscation_secret[::-1]).hexdigest()
+            )
         self.obfuscation_key = obfuscation_key
 
     def obfuscate(self, text):
@@ -372,7 +384,7 @@ class Obfuscator(object):
         # XOR each character from our input
         # with the corresponding character from the key
         xor_gen = (chr(ord(t) ^ ord(k)) for (t, k) in zip(text, key))
-        return ''.join(xor_gen)
+        return "".join(xor_gen)
 
     deobfuscate = obfuscate
 
@@ -384,31 +396,32 @@ class ConfigurationProvider(object):
         """
         for a given timestamp, this should return the appropriate app secret
         """
-        return ''
+        return ""
 
     def obfuscator(timestamp):
         """
         for a given timestamp, this should return the appropriate obfuscator
         """
-        obfuscation_secret = ''
-        obfuscation_key = ''
+        obfuscation_secret = ""
+        obfuscation_key = ""
         return Obfuscator(obfuscation_key, obfuscation_secret)
 
     def rsa_key(timestamp):
         """
         for a given timestamp, this should return the appropriate RSA Key
         """
-        rsa_key_private = ''
-        rsa_key_private_passphrase = ''
-        return RsaKeyHolder(key_private=rsa_key_private,
-                            key_private_passphrase=rsa_key_private_passphrase,
-                            )
+        rsa_key_private = ""
+        rsa_key_private_passphrase = ""
+        return RsaKeyHolder(
+            key_private=rsa_key_private,
+            key_private_passphrase=rsa_key_private_passphrase,
+        )
 
     def aes_cipher(timestamp):
         """
         for a given timestamp, this should return the appropriate AES object
         """
-        aes_secret = ''
+        aes_secret = ""
         return AesCipherHolder(aes_secret)
 
 
@@ -431,20 +444,17 @@ class SecureEnough(object):
     def __init__(
         self,
         config_app_secret=None,
-        app_secret='',
-
+        app_secret="",
         use_aes_encryption=False,
         config_aes=None,
         aes_secret=None,
-
         use_rsa_encryption=False,
         config_rsa=None,
         rsa_key_private=None,
         rsa_key_private_passphrase=None,
-
         use_obfuscation=False,
         config_obfuscation=None,
-        obfuscation_secret='',
+        obfuscation_secret="",
         obfuscation_key=None,
     ):
         if config_app_secret:
@@ -466,18 +476,17 @@ class SecureEnough(object):
             if config_rsa:
                 self._config_provider_rsa = config_rsa
             else:
-                self._rsa_key = RsaKeyHolder(key_private=rsa_key_private,
-                                             key_private_passphrase=rsa_key_private_passphrase,
-                                             )
+                self._rsa_key = RsaKeyHolder(
+                    key_private=rsa_key_private,
+                    key_private_passphrase=rsa_key_private_passphrase,
+                )
 
         if use_obfuscation:
             self.use_obfuscation = use_obfuscation
             if config_obfuscation:
                 self._config_provider_obfuscation = config_obfuscation
             else:
-                self._obfuscator = Obfuscator(obfuscation_key,
-                                              obfuscation_secret,
-                                              )
+                self._obfuscator = Obfuscator(obfuscation_key, obfuscation_secret)
 
     def app_secret(self, timestamp=None):
         """internal function to return an app secret"""
@@ -541,17 +550,18 @@ class SecureEnough(object):
         """
         internal class and instance method for returning an algoritm function
         """
-        if algorithm == 'HMAC-SHA256':
+        if algorithm == "HMAC-SHA256":
             digestmod = hashlib.sha256
-        elif algorithm == 'HMAC-SHA1':
+        elif algorithm == "HMAC-SHA1":
             digestmod = hashlib.sha1
         else:
             raise InvalidAlgorithm("unsupported algorithm - %s" % algorithm)
         return digestmod
 
     @classmethod
-    def signed_request_create(cls, data, secret=None, issued_at=None,
-                              algorithm="HMAC-SHA256"):
+    def signed_request_create(
+        cls, data, secret=None, issued_at=None, algorithm="HMAC-SHA256"
+    ):
         """
         classmethod.
         creates a signed token for `data` using `secret`, calculated by
@@ -561,12 +571,13 @@ class SecureEnough(object):
         """
         _data = data.copy()
         digestmod = cls._digestmod(algorithm)
-        if 'algorithm' in _data and _data['algorithm'] != algorithm:
-            raise InvalidAlgorithm('`algorithm` defined in payload already, '
-                                   'and as another format')
-        _data['algorithm'] = algorithm
-        if issued_at and 'issued_at' not in _data:
-            _data['issued_at'] = issued_at
+        if "algorithm" in _data and _data["algorithm"] != algorithm:
+            raise InvalidAlgorithm(
+                "`algorithm` defined in payload already, " "and as another format"
+            )
+        _data["algorithm"] = algorithm
+        if issued_at and "issued_at" not in _data:
+            _data["issued_at"] = issued_at
         payload = json.dumps(_data)
         if six.PY3:
             payload = payload.encode()  # str to bytes
@@ -575,18 +586,20 @@ class SecureEnough(object):
             payload = payload.encode()  # str to bytes
             secret = secret.encode() if isinstance(secret, str) else secret
             # hmac.new(secret,msg=payload,digestmod=digestmod).hexdigest()
-        signature = hmac.new(secret,
-                             msg=payload,
-                             digestmod=digestmod,
-                             ).hexdigest()
+        signature = hmac.new(secret, msg=payload, digestmod=digestmod).hexdigest()
         if six.PY3:
-            return signature + '.' + payload.decode()  # bytes to string
-        return signature + '.' + payload
+            return signature + "." + payload.decode()  # bytes to string
+        return signature + "." + payload
 
     @classmethod
-    def signed_request_verify(cls, signed_request=None, secret=None,
-                              timeout=None, algorithm="HMAC-SHA256",
-                              payload_only=False):
+    def signed_request_verify(
+        cls,
+        signed_request=None,
+        secret=None,
+        timeout=None,
+        algorithm="HMAC-SHA256",
+        payload_only=False,
+    ):
         """
         This is compatible with signed requests from facebook.com
             (https://developers.facebook.com/docs/authentication/signed_request/)
@@ -601,7 +614,7 @@ class SecureEnough(object):
         """
         digestmod = cls._digestmod(algorithm)
 
-        (signature, payload) = signed_request.split('.')
+        (signature, payload) = signed_request.split(".")
 
         try:
             decoded_signature = cls._base64_url_decode(signature)
@@ -612,25 +625,28 @@ class SecureEnough(object):
         except:
             raise InvalidPayload("Can't decode payload (_base64 error?)")
 
-        if data.get('algorithm').upper() != algorithm:
-            raise InvalidAlgorithm('unexpected algorithm.  Wanted %s, Received %s' % (algorithm, data.get('algorithm')))
+        if data.get("algorithm").upper() != algorithm:
+            raise InvalidAlgorithm(
+                "unexpected algorithm.  Wanted %s, Received %s"
+                % (algorithm, data.get("algorithm"))
+            )
 
         if six.PY3:
             secret = secret.encode() if isinstance(secret, str) else secret
             payload = payload.encode() if isinstance(payload, str) else secret
 
-        expected_sig = hmac.new(secret,
-                                msg=payload,
-                                digestmod=digestmod
-                                ).hexdigest()
+        expected_sig = hmac.new(secret, msg=payload, digestmod=digestmod).hexdigest()
 
         if signature != expected_sig:
-            raise InvalidSignature('invalid signature.  signature (%s) != expected_sig (%s)' % (signature, expected_sig))
+            raise InvalidSignature(
+                "invalid signature.  signature (%s) != expected_sig (%s)"
+                % (signature, expected_sig)
+            )
 
         if timeout:
             time_now = int(time())
-            diff = time_now - data['issued_at']
-            if (diff > timeout):
+            diff = time_now - data["issued_at"]
+            if diff > timeout:
                 if payload_only:
                     return False
                 return (False, data)
@@ -652,15 +668,15 @@ class SecureEnough(object):
         if isinstance(data, dict):
             serialized = json.dumps(data)
         elif isinstance(data, list) or isinstance(data, tuple):
-            serialized = '|'.join(data)
-            if '|' in serialized:
+            serialized = "|".join(data)
+            if "|" in serialized:
                 raise ValueError("`|` only allowed in dicts")
         elif isinstance(data, str):
             serialized = data
-            if '|' in serialized:
+            if "|" in serialized:
                 raise ValueError("`|` only allowed in dicts")
         else:
-            raise TypeError('invalid type for serialization')
+            raise TypeError("invalid type for serialization")
         return serialized
 
     def _deserialize(self, serialized):
@@ -669,8 +685,8 @@ class SecureEnough(object):
         try:
             data = json.loads(serialized)
         except json.decoder.JSONDecodeError:
-            if '|' in serialized:
-                data = serialized.split('|')
+            if "|" in serialized:
+                data = serialized.split("|")
             else:
                 data = serialized
         return data
@@ -690,13 +706,12 @@ class SecureEnough(object):
         message = "%s||%s" % (payload, timestamp)
         app_secret = self.app_secret(timestamp=timestamp)
         if six.PY3:
-            app_secret = app_secret.encode() if isinstance(app_secret, str) else app_secret
+            app_secret = (
+                app_secret.encode() if isinstance(app_secret, str) else app_secret
+            )
             message = message.encode()
             # hmac.new(app_secret,msg=message,digestmod=digestmod).hexdigest()
-        return hmac.new(app_secret,
-                        msg=message,
-                        digestmod=digestmod
-                        ).hexdigest()
+        return hmac.new(app_secret, msg=message, digestmod=digestmod).hexdigest()
 
     def encode(self, data, hashtime=True, hmac_algorithm="HMAC-SHA1", time_now=None):
         """
@@ -725,7 +740,7 @@ class SecureEnough(object):
         if self.use_obfuscation:
             # the output of `.obfuscate()` will be a `str`
             payload = self.obfuscator(timestamp=time_now).obfuscate(payload)
-        
+
         # .. optionally encrypt the payload
         if self.use_rsa_encryption:
             # `.encrypt()` expects a `str` and returns a `str` or `bytes`
@@ -740,17 +755,13 @@ class SecureEnough(object):
         # if we're computing time-sensitive keys or expiration, we'll return a compound token
         if hashtime:
             # format compatible with `decode` and `debug_hashtime`
-            hash = self._hmac_for_timestamp(payload,
-                                            time_now,
-                                            algorithm=hmac_algorithm
-                                            )
+            hash = self._hmac_for_timestamp(payload, time_now, algorithm=hmac_algorithm)
             compound = "%s|%s|%s" % (payload, time_now, hash)
             return compound
         # otherwise, just return the payload
         return payload
 
-    def decode(self, payload, hashtime=True, timeout=None,
-               hmac_algorithm="HMAC-SHA1"):
+    def decode(self, payload, hashtime=True, timeout=None, hmac_algorithm="HMAC-SHA1"):
         """public method. decodes data."""
         if hmac_algorithm and not hashtime:
             hashtime = True
@@ -761,20 +772,16 @@ class SecureEnough(object):
         # try to validate the hashtime
         if hashtime:
             # format compatible with `encode` and `debug_hashtime`
-            (signed_payload,
-             time_then,
-             hash_received
-             ) = split_hashed_format(payload)
-            hash_expected = self._hmac_for_timestamp(signed_payload,
-                                                     time_then,
-                                                     algorithm=hmac_algorithm,
-                                                     )
+            (signed_payload, time_then, hash_received) = split_hashed_format(payload)
+            hash_expected = self._hmac_for_timestamp(
+                signed_payload, time_then, algorithm=hmac_algorithm
+            )
             if hash_expected != hash_received:
                 raise InvalidChecksum()
             if timeout:
                 time_now = int(time())
                 # wrap the timeout in an int(float()) to catch floats as strings
-                if ((time_now - time_then) > int(float(timeout))):
+                if (time_now - time_then) > int(float(timeout)):
                     raise InvalidTimeout()
             payload = signed_payload
 
@@ -802,10 +809,7 @@ class SecureEnough(object):
         useful for debugging.
         format compatible with `encode` and `decode`
         """
-        (signed_payload,
-         time_then,
-         hash_received
-         ) = split_hashed_format(payload)
+        (signed_payload, time_then, hash_received) = split_hashed_format(payload)
 
         time_now = int(time())
         checksum_valid = True
@@ -813,11 +817,9 @@ class SecureEnough(object):
         decoded = None
         decoding_error = None
         try:
-            decoded = self.decode(payload,
-                                  hashtime=True,
-                                  timeout=timeout,
-                                  hmac_algorithm=hmac_algorithm,
-                                  )
+            decoded = self.decode(
+                payload, hashtime=True, timeout=timeout, hmac_algorithm=hmac_algorithm
+            )
         except InvalidChecksum:
             checksum_valid = False
         except InvalidTimeout:
@@ -825,15 +827,16 @@ class SecureEnough(object):
         except Exception as e:
             decoding_error = e
 
-        return {'payload': payload,
-                'signed_payload': signed_payload,
-                'time_then': time_then,
-                'time_now': time_now,
-                'hash_received': hash_received,
-                'checksum_valid': checksum_valid,
-                'decoded': decoded,
-                'decoding_error': decoding_error,
-                }
+        return {
+            "payload": payload,
+            "signed_payload": signed_payload,
+            "time_then": time_then,
+            "time_now": time_now,
+            "hash_received": hash_received,
+            "checksum_valid": checksum_valid,
+            "decoded": decoded,
+            "decoding_error": decoding_error,
+        }
 
     def serialized_plaintext_encode(self, payload):
         return self.encode(payload, hashtime=False, hmac_algorithm=None)
