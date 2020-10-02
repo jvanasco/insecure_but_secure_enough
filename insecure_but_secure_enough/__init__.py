@@ -516,7 +516,7 @@ class SecureEnough(object):
     def _base64_url_encode(cls, bytes_):
         """
         internal classmethod for b64 encoding.
-        
+
         INPUT:
             PY2: `str`
             PY3: `bytes`
@@ -695,7 +695,7 @@ class SecureEnough(object):
         """
         internal function. calcuates an hmac for a timestamp.
         to accomplish this, we just pad the payload with the given timestamp
-        
+
         input:
             PY2: payload = string
             PY3: payload = bytes

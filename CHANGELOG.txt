@@ -1,5 +1,7 @@
 0.1.1dev
 	- black
+	* upgraded black; 20.8b1
+	* integrated with pre-commit
 
 0.1.0
 	- python3 support
