@@ -1,7 +1,11 @@
-0.1.1dev
+0.1.1
 	- black
 	* upgraded black; 20.8b1
 	* integrated with pre-commit
+	* tox
+	* migrated from pycrypto to pycryptodome
+		pycrypto no longer maintained, does not work under python38
+		mostly a drop-in replacement; `key.size()` changed to `key.size_in_bytes()`
 
 0.1.0
 	- python3 support

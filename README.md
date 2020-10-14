@@ -46,3 +46,9 @@ The following files give an interactive demo:
 Also note that the github source distribution contains tests.
 
 ===================
+
+
+# ToDo:
+
+The timebased providers is entirely untested.
+* build out the demo and the test suite to support it.

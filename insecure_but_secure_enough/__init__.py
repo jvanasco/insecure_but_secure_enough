@@ -134,16 +134,7 @@ This flow will allow you to easily create a plethora of site secrets and RSA
 keys -- as in a new one each day -- which means that while this module is not
 actually secure, it is Secure Enough for most web applications.
 
-===========
-
-
-===========
-
-
-# ToDo:
-
-The timebased providers is entirely untested.
-I need to build out the demo and the test suite to support it.
+--------------------------------------------------------------------------------
 
 insecure_but_secure_enough is released under the MIT license
 """
@@ -161,9 +152,13 @@ try:
 except ImportError:
     import json
 
-from Crypto.Cipher import AES
-from Crypto.Cipher import PKCS1_OAEP
-from Crypto.PublicKey import RSA
+# pypi
+from Cryptodome.Cipher import AES
+from Cryptodome.Cipher import PKCS1_OAEP
+from Cryptodome.PublicKey import RSA
+
+
+# ==============================================================================
 
 
 class Invalid(Exception):
@@ -202,6 +197,9 @@ class InvalidTimeout(Invalid):
     pass
 
 
+# ==============================================================================
+
+
 def _base64_url_encode__py2(bytestring):
     """
     private method for b64 encoding.
@@ -232,6 +230,9 @@ def split_hashed_format(payload):
     (signed_payload, time_then, hash_received) = payload.split("|")
     time_then = int(float(time_then))
     return (signed_payload, time_then, hash_received)
+
+
+# ==============================================================================
 
 
 class AesCipherHolder(object):
@@ -293,7 +294,7 @@ class RsaKeyHolder(object):
             self.key = RSA.importKey(self._key_private, self._key_private_passphrase)
         else:
             self.key = RSA.importKey(self._key_private)
-        self.key_length_bytes = int((self.key.size() + 1) / 8)
+        self.key_length_bytes = self.key.size_in_bytes()
         # from https://bugs.launchpad.net/pycrypto/+bug/328027
         self.block_bytes = self.key_length_bytes - 2 * 20 - 2
         self.cipher = PKCS1_OAEP.new(self.key)

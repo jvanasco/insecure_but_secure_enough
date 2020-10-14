@@ -16,7 +16,7 @@ with open(
 ) as v_file:
     VERSION = re.compile(r'.*__VERSION__ = "(.*?)"', re.S).match(v_file.read()).group(1)
 
-requires = ["PyCrypto >= 2.6", "simplejson"]
+requires = ["pycryptodomex", "simplejson"]
 tests_require = []
 testing_extras = tests_require + [
     "pytest",
