@@ -1,10 +1,14 @@
+![Python package](https://github.com/jvanasco/insecure_but_secure_enough/workflows/Python%20package/badge.svg)
+
 This package is insecure, but secure enough.
 
-The idea for secure_enough to allow for "autologin cookies" and "instant login" urls for stupid social web applications.
+The idea for secure_enough to allow for "autologin cookies" and "instant login" urls for social web applications.
+
+This package is similar to "ItsDangerous", which is now popular but was unknown when this package was first written.
 
 Two important things to note:
 
-1. You should not use this module for financial transactions or sensitive info.  That would be egregiously stupid.
+1. You should not use this module for financial transactions or sensitive info.  That would be egregiously silly.
 2. If you log someone in with this , you should note the login as "insecure" and require them to provide a password to view sensitive data or any 'write' activity.
 
 

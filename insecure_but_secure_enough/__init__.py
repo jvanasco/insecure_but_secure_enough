@@ -138,7 +138,7 @@ actually secure, it is Secure Enough for most web applications.
 
 insecure_but_secure_enough is released under the MIT license
 """
-__VERSION__ = "0.1.1dev"
+__VERSION__ = "0.1.1"
 
 
 import base64
