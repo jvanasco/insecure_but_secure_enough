@@ -31,7 +31,7 @@ setup(
     version=VERSION,
     description=description,
     long_description=long_description,
-    long_description_content_type="markdown",
+    long_description_content_type="text/markdown",
     classifiers=[
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
