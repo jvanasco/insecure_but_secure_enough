@@ -6,9 +6,15 @@ import re
 from setuptools import setup
 from setuptools import find_packages
 
-here = os.path.abspath(os.path.dirname(__file__))
-README = open(os.path.join(here, "README.md")).read()
-README = README.split("\n\n", 1)[0] + "\n"
+long_description = (
+    description
+) = "Lightweight tools for signing and encrypting cookies, urls and stuff. This package isn't really secure, but it is secure enough for most needs."
+
+try:
+    here = os.path.abspath(os.path.dirname(__file__))
+    long_description = open(os.path.join(here, "README.md")).read()
+except:
+    pass
 
 # store version in the init.py
 with open(
@@ -17,16 +23,15 @@ with open(
     VERSION = re.compile(r'.*__VERSION__ = "(.*?)"', re.S).match(v_file.read()).group(1)
 
 requires = ["pycryptodomex", "simplejson"]
-tests_require = []
-testing_extras = tests_require + [
-    "pytest",
-]
+tests_require = ["pytest"]
+testing_extras = tests_require + []
 
 setup(
     name="insecure_but_secure_enough",
     version=VERSION,
-    description="Lightweight tools for signing and encrypting cookies, urls and stuff. This package isn't really secure, but it is secure enough for most needs.",
-    long_description=README,
+    description=description,
+    long_description=long_description,
+    long_description_content_type="markdown",
     classifiers=[
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",

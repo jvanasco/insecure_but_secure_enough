@@ -1,5 +1,4 @@
 """
-
 This package is insecure, but secure enough.
 
 The idea for secure_enough to allow for "autologin cookies" and "instant login"
@@ -138,7 +137,7 @@ actually secure, it is Secure Enough for most web applications.
 
 insecure_but_secure_enough is released under the MIT license
 """
-__VERSION__ = "0.1.1"
+__VERSION__ = "0.1.2"
 
 
 import base64
