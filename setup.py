@@ -6,20 +6,16 @@ import re
 from setuptools import setup
 from setuptools import find_packages
 
+HERE = os.path.abspath(os.path.dirname(__file__))
+
 long_description = (
     description
 ) = "Lightweight tools for signing and encrypting cookies, urls and stuff. This package isn't really secure, but it is secure enough for most needs."
-
-try:
-    here = os.path.abspath(os.path.dirname(__file__))
-    long_description = open(os.path.join(here, "README.md")).read()
-except:
-    pass
+with open(os.path.join(HERE, "README.md")) as fp:
+    long_description = fp.read()
 
 # store version in the init.py
-with open(
-    os.path.join(os.path.dirname(__file__), "insecure_but_secure_enough", "__init__.py")
-) as v_file:
+with open(os.path.join(HERE, "insecure_but_secure_enough", "__init__.py")) as v_file:
     VERSION = re.compile(r'.*__VERSION__ = "(.*?)"', re.S).match(v_file.read()).group(1)
 
 requires = ["pycryptodomex", "simplejson"]
