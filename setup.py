@@ -18,7 +18,11 @@ with open(os.path.join(HERE, "README.md")) as fp:
 with open(os.path.join(HERE, "insecure_but_secure_enough", "__init__.py")) as v_file:
     VERSION = re.compile(r'.*__VERSION__ = "(.*?)"', re.S).match(v_file.read()).group(1)
 
-requires = ["pycryptodomex", "simplejson"]
+requires = [
+    "pycryptodomex",
+    "simplejson",
+    "six",
+]
 tests_require = ["pytest"]
 testing_extras = tests_require + []
 
