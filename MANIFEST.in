@@ -1,1 +1,9 @@
-include CHANGELOG.txt README.md tests.py demo.py demo_performance.py
+graft src
+graft tests
+
+include setup.cfg pyproject.toml
+include tox.ini
+include CHANGELOG.txt
+include README.md
+
+recursive-exclude * __pycache__ *.py[cod] .DS_Store

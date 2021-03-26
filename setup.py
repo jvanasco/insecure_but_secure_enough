@@ -15,7 +15,9 @@ with open(os.path.join(HERE, "README.md")) as fp:
     long_description = fp.read()
 
 # store version in the init.py
-with open(os.path.join(HERE, "insecure_but_secure_enough", "__init__.py")) as v_file:
+with open(
+    os.path.join(HERE, "src", "insecure_but_secure_enough", "__init__.py")
+) as v_file:
     VERSION = re.compile(r'.*__VERSION__ = "(.*?)"', re.S).match(v_file.read()).group(1)
 
 requires = [
@@ -43,7 +45,10 @@ setup(
     author_email="jonathan@findmeon.com",
     url="https://github.com/jvanasco/insecure_but_secure_enough",
     license="MIT",
-    packages=find_packages(),
+    packages=find_packages(
+        where="src",
+    ),
+    package_dir={"": "src"},
     include_package_data=True,
     zip_safe=False,
     install_requires=requires,
