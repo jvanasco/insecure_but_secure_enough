@@ -1,3 +1,6 @@
+0.1.4
+	* py3 improvements. attempts to handle b/str encodings
+
 0.1.3
 	* packaging fixes
 

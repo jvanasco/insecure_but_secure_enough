@@ -137,14 +137,13 @@ actually secure, it is Secure Enough for most web applications.
 
 insecure_but_secure_enough is released under the MIT license
 """
-__VERSION__ = "0.1.3"
+__VERSION__ = "0.1.4"
 
-
+# stdlib
 import base64
 import hashlib
 import hmac
 from time import time
-import six
 
 try:
     import simplejson as json
@@ -152,6 +151,7 @@ except ImportError:
     import json
 
 # pypi
+from six import PY3
 from Cryptodome.Cipher import AES
 from Cryptodome.Cipher import PKCS1_OAEP
 from Cryptodome.PublicKey import RSA
@@ -243,7 +243,7 @@ class AesCipherHolder(object):
     _aes_iv = None
 
     def __init__(self, secret):
-        if six.PY3:
+        if PY3:
             secret = secret.encode() if isinstance(secret, str) else secret
         self._secret = secret
 
@@ -262,7 +262,7 @@ class AesCipherHolder(object):
         return cipher
 
     def encrypt(self, payload_string):
-        if six.PY3:
+        if PY3:
             payload_string = (
                 payload_string.encode()
                 if isinstance(payload_string, str)
@@ -303,7 +303,7 @@ class RsaKeyHolder(object):
         for block in self._split_string(payload_string, self.block_bytes):
             encrypted_block = self.cipher.encrypt(block)
             encrypted_blocks.append(encrypted_block)
-        if six.PY3:
+        if PY3:
             return b"".join(encrypted_blocks)
         return "".join(encrypted_blocks)
 
@@ -321,7 +321,7 @@ class RsaKeyHolder(object):
             decrypted_blocks.append(decrypted_block)
         return b"".join(decrypted_blocks)
 
-    if six.PY3:
+    if PY3:
         # py3 has us working on bytes
         decrypt = decrypt_bytes
     else:
@@ -335,7 +335,7 @@ class RsaKeyHolder(object):
             block = payload_string[start : (start + block_size)]
             blocks.append(block)
             start += block_size
-        if six.PY3:
+        if PY3:
             return [b.encode() for b in blocks]  # PY3 wants bytes
         return blocks
 
@@ -357,7 +357,7 @@ class Obfuscator(object):
     def __init__(self, obfuscation_key, obfuscation_secret):
         self.obfuscation_secret = obfuscation_secret
         if not obfuscation_key:
-            if six.PY3:
+            if PY3:
                 obfuscation_secret = (
                     obfuscation_secret.encode()
                     if isinstance(obfuscation_secret, str)
@@ -376,7 +376,7 @@ class Obfuscator(object):
         OUTPUT:
             always returns `str`
         """
-        # if six.PY3:
+        # if PY3:
         #    text = text.decode() if not isinstance(text, str) else text
         # copy out our OBFUSCATE_KEY to the length of the text
         key = self.obfuscation_key * (len(text) // len(self.obfuscation_key) + 1)
@@ -523,7 +523,7 @@ class SecureEnough(object):
         OUTPUT:
             this ALWAYS returns `str`
         """
-        if six.PY3:
+        if PY3:
             return _base64_url_encode__py3(bytes_)
         return _base64_url_encode__py2(bytes_)
 
@@ -579,15 +579,15 @@ class SecureEnough(object):
         if issued_at and "issued_at" not in _data:
             _data["issued_at"] = issued_at
         payload = json.dumps(_data)
-        if six.PY3:
+        if PY3:
             payload = payload.encode()  # str to bytes
         payload = cls._base64_url_encode(payload)
-        if six.PY3:
+        if PY3:
             payload = payload.encode()  # str to bytes
             secret = secret.encode() if isinstance(secret, str) else secret
             # hmac.new(secret,msg=payload,digestmod=digestmod).hexdigest()
         signature = hmac.new(secret, msg=payload, digestmod=digestmod).hexdigest()
-        if six.PY3:
+        if PY3:
             return signature + "." + payload.decode()  # bytes to string
         return signature + "." + payload
 
@@ -612,6 +612,14 @@ class SecureEnough(object):
         extracted data.  No boolean will be returned.  If a timeout is also
         submitted, it will return the payload on success and False on failure.
         """
+        if PY3:
+            # ensure we have a string...
+            signed_request = (
+                signed_request.decode()
+                if isinstance(signed_request, bytes)
+                else signed_request
+            )
+
         digestmod = cls._digestmod(algorithm)
 
         (signature, payload) = signed_request.split(".")
@@ -631,7 +639,7 @@ class SecureEnough(object):
                 % (algorithm, data.get("algorithm"))
             )
 
-        if six.PY3:
+        if PY3:
             secret = secret.encode() if isinstance(secret, str) else secret
             payload = payload.encode() if isinstance(payload, str) else secret
 
@@ -705,7 +713,7 @@ class SecureEnough(object):
         digestmod = self._digestmod(algorithm)
         message = "%s||%s" % (payload, timestamp)
         app_secret = self.app_secret(timestamp=timestamp)
-        if six.PY3:
+        if PY3:
             app_secret = (
                 app_secret.encode() if isinstance(app_secret, str) else app_secret
             )
@@ -719,6 +727,10 @@ class SecureEnough(object):
         time_now should ONLY be used for testing/debugging situations when an
         invalid payload is needed.
         """
+        if PY3:
+            if isinstance(data, bytes):
+                data = data.decode()
+
         if hmac_algorithm and not hashtime:
             hashtime = True
 
@@ -763,6 +775,10 @@ class SecureEnough(object):
 
     def decode(self, payload, hashtime=True, timeout=None, hmac_algorithm="HMAC-SHA1"):
         """public method. decodes data."""
+        if PY3:
+            if isinstance(payload, bytes):
+                payload = payload.decode()
+
         if hmac_algorithm and not hashtime:
             hashtime = True
 
@@ -796,7 +812,7 @@ class SecureEnough(object):
             payload = self.aes_cipher(timestamp=time_then).decrypt(payload)
 
         if self.use_obfuscation:
-            if six.PY3:
+            if PY3:
                 payload = payload.decode()
             payload = self.obfuscator(timestamp=time_then).deobfuscate(payload)
 
@@ -809,6 +825,10 @@ class SecureEnough(object):
         useful for debugging.
         format compatible with `encode` and `decode`
         """
+        if PY3:
+            if isinstance(payload, bytes):
+                payload = payload.decode()
+
         (signed_payload, time_then, hash_received) = split_hashed_format(payload)
 
         time_now = int(time())

@@ -1,13 +1,18 @@
-# our module
+# stdlib
+from time import time
+import datetime
+import unittest
+
+# pypi
+import six
+
+# local
 import insecure_but_secure_enough
 from insecure_but_secure_enough import SecureEnough
 
-# core testing facility
-import unittest
 
-# misc...
-from time import time
-import datetime
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
 
 rsa_key_private = """-----BEGIN RSA PRIVATE KEY-----
 Proc-Type: 4,ENCRYPTED
@@ -108,10 +113,14 @@ class _AES_Configuration(object):
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 
-class TestClassMethods(unittest.TestCase):
+class _TestClassMethods(object):
+    _test_bytes = None
+
     def test_signed_request_create_and_verify(self):
         request_data = data.copy()
         signed = SecureEnough.signed_request_create(request_data, secret=app_secret)
+        if self._test_bytes:
+            signed = signed.encode()
         (verified, payload) = SecureEnough.signed_request_verify(
             signed, secret=app_secret
         )
@@ -121,12 +130,14 @@ class TestClassMethods(unittest.TestCase):
     def test_signed_request_verify_failure_invalid_signature(self):
         request_data = data.copy()
         signed = SecureEnough.signed_request_create(request_data, secret=app_secret)
+        if self._test_bytes:
+            signed = signed.encode()
         self.assertRaises(
             insecure_but_secure_enough.InvalidSignature,
             lambda: SecureEnough.signed_request_verify(signed, secret=app_secret_wrong),
         )
 
-    def test_signed_request_verify_failure_invalid_algoritm(self):
+    def test_signed_request_create_invalid_algorithm_a(self):
         request_data = data.copy()
         self.assertRaises(
             insecure_but_secure_enough.InvalidAlgorithm,
@@ -135,7 +146,7 @@ class TestClassMethods(unittest.TestCase):
             ),
         )
 
-    def test_signed_request_create_invalid_algoritm(self):
+    def test_signed_request_create_invalid_algorithm_b(self):
         request_data = data.copy()
         request_data["algorithm"] = "md5"
         self.assertRaises(
@@ -149,6 +160,8 @@ class TestClassMethods(unittest.TestCase):
         signed = SecureEnough.signed_request_create(
             request_data, secret=app_secret, issued_at=issued_at
         )
+        if self._test_bytes:
+            signed = signed.encode()
         (verified, payload) = SecureEnough.signed_request_verify(
             signed, secret=app_secret, timeout=100
         )
@@ -162,11 +175,26 @@ class TestClassMethods(unittest.TestCase):
         signed = SecureEnough.signed_request_create(
             request_data, secret=app_secret, issued_at=issued_at
         )
+        if self._test_bytes:
+            signed = signed.encode()
         (verified, payload) = SecureEnough.signed_request_verify(
             signed, secret=app_secret, timeout=1000
         )
         self.assertFalse(verified)
         self.assertTrue(_validate_signed_request_payload(payload, request_data))
+
+
+class TestClassMethods(unittest.TestCase, _TestClassMethods):
+    """
+    actually run `_TestClassMethods` tests
+    """
+
+    _test_bytes = False
+
+
+@unittest.skipIf(six.PY2, "only needed on PY3")
+class TestClassMethods_bytes(TestClassMethods):
+    _test_bytes = True
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -179,6 +207,8 @@ class _TestFactoryMethods_Encrypted_core(object):
         TestFactoryMethods_Encrypted_RSA
         TestFactoryMethods_Encrypted_AES
     """
+
+    _test_bytes = None
 
     def _makeOne_obfuscation(self):
         encryptionFactory = SecureEnough(
@@ -231,7 +261,12 @@ class TestFactoryMethods_Encrypted_RSA(
     to run tests defined in `_TestFactoryMethods_Encrypted_core`
     """
 
-    pass
+    _test_bytes = False
+
+
+@unittest.skipIf(six.PY2, "only needed on PY3")
+class TestFactoryMethods_Encrypted_RSA_bytes(TestFactoryMethods_Encrypted_RSA):
+    _test_bytes = True
 
 
 class TestFactoryMethods_Encrypted_AES(
@@ -243,6 +278,11 @@ class TestFactoryMethods_Encrypted_AES(
     """
 
     pass
+
+
+@unittest.skipIf(six.PY2, "only needed on PY3")
+class TestFactoryMethods_Encrypted_AES_bytes(TestFactoryMethods_Encrypted_AES):
+    _test_bytes = True
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -279,6 +319,8 @@ class _TestVerificationMethods_Encrypted_core(object):
         TestVerificationMethods_Encrypted_AES
     """
 
+    _test_bytes = None
+
     def test_encryption_timeout(self):
         encryptionFactory = self._makeOne_encryption()
         request_data = data.copy()
@@ -286,6 +328,9 @@ class _TestVerificationMethods_Encrypted_core(object):
         timeout_bad = datetime.timedelta(days=10).total_seconds()
         timeout_good = datetime.timedelta(days=1000).total_seconds()
         encrypted = encryptionFactory.encode(data, hashtime=True, time_now=issued_at)
+
+        if self._test_bytes:
+            encrypted = encrypted.encode()
 
         self.assertRaises(
             insecure_but_secure_enough.InvalidTimeout,
@@ -306,7 +351,14 @@ class TestVerificationMethods_Encrypted_RSA(
     to run tests defined in `_TestVerificationMethods_Encrypted_core`
     """
 
-    pass
+    _test_bytes = False
+
+
+@unittest.skipIf(six.PY2, "only needed on PY3")
+class TestVerificationMethods_Encrypted_RSA_bytes(
+    TestVerificationMethods_Encrypted_RSA
+):
+    _test_bytes = True
 
 
 class TestVerificationMethods_Encrypted_AES(
@@ -317,7 +369,14 @@ class TestVerificationMethods_Encrypted_AES(
     to run tests defined in `_TestVerificationMethods_Encrypted_core`
     """
 
-    pass
+    _test_bytes = False
+
+
+@unittest.skipIf(six.PY2, "only needed on PY3")
+class TestVerificationMethods_Encrypted_AES_bytes(
+    TestVerificationMethods_Encrypted_AES
+):
+    _test_bytes = True
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -331,11 +390,15 @@ class _TestEncryptionUtilities_Encrypted_core(object):
         TestEncryptionUtilities_Encrypted_AES
     """
 
+    _test_bytes = None
+
     def test_debug_hashtime(self):
         encryptionFactory = self._makeOne_encryption()
         request_data = data.copy()
         issued_at = int(time()) - datetime.timedelta(days=100).total_seconds()
         encrypted = encryptionFactory.encode(data, hashtime=True, time_now=issued_at)
+        if self._test_bytes:
+            encrypted = encrypted.encode()
 
         # ensure we can do a bunch of miscellaneous functions
         payload = encryptionFactory.debug_hashtime(encrypted)
@@ -349,6 +412,8 @@ class _TestEncryptionUtilities_Encrypted_core(object):
         request_data = data.copy()
         # roundtrip
         payload = encryptionFactory.serialized_plaintext_encode(request_data)
+        if self._test_bytes:
+            payload = payload.encode()
         payload = encryptionFactory.serialized_plaintext_decode(payload)
         self.assertEqual(payload, request_data)
 
@@ -356,6 +421,8 @@ class _TestEncryptionUtilities_Encrypted_core(object):
         encryptionFactory = self._makeOne_encryption()
         request_data = data.copy()
         payload = encryptionFactory.hmac_sha1_encode(request_data)
+        if self._test_bytes:
+            payload = payload.encode()
         payload = encryptionFactory.hmac_sha1_decode(payload)
         self.assertEqual(payload, request_data)
 
@@ -363,6 +430,8 @@ class _TestEncryptionUtilities_Encrypted_core(object):
         encryptionFactory = self._makeOne_encryption()
         request_data = data.copy()
         payload = encryptionFactory.hmac_sha256_encode(request_data)
+        if self._test_bytes:
+            payload = payload.encode()
         payload = encryptionFactory.hmac_sha256_decode(payload)
         self.assertEqual(payload, request_data)
 
@@ -375,7 +444,14 @@ class TestEncryptionUtilities_Encrypted_RSA(
     to run tests defined in `_TestEncryptionUtilities_Encrypted_core`
     """
 
-    pass
+    _test_bytes = False
+
+
+@unittest.skipIf(six.PY2, "only needed on PY3")
+class TestEncryptionUtilities_Encrypted_RSA_bytes(
+    TestEncryptionUtilities_Encrypted_RSA
+):
+    _test_bytes = True
 
 
 class TestEncryptionUtilities_Encrypted_AES(
@@ -386,4 +462,11 @@ class TestEncryptionUtilities_Encrypted_AES(
     to run tests defined in `_TestEncryptionUtilities_Encrypted_core`
     """
 
-    pass
+    _test_bytes = False
+
+
+@unittest.skipIf(six.PY2, "only needed on PY3")
+class TestEncryptionUtilities_Encrypted_AES_bytes(
+    TestEncryptionUtilities_Encrypted_AES
+):
+    _test_bytes = True
