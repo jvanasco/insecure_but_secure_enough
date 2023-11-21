@@ -1,10 +1,8 @@
 # stdlib
-from time import time
 import datetime
+from time import time
+from typing import Optional
 import unittest
-
-# pypi
-import six
 
 # local
 import insecure_but_secure_enough
@@ -45,7 +43,10 @@ app_secret_wrong = "not-the-app-secret"
 
 
 def _validate_signed_request_payload(
-    decrypted_payload, original_data, algorithm="HMAC-SHA256", issued_at=None
+    decrypted_payload,
+    original_data,
+    algorithm="HMAC-SHA256",
+    issued_at=None,
 ):
     # ensure everything ORIGINAL is DECRYPTED
     for i in original_data.keys():
@@ -110,11 +111,23 @@ class _AES_Configuration(object):
         return encryptionFactory
 
 
+class _Obfuscator_Configuration(object):
+    """creates AES factories"""
+
+    def _makeOne_obfuscation(self):
+        encryptionFactory = SecureEnough(
+            app_secret=app_secret,
+            use_obfuscation=True,
+            obfuscation_secret=app_secret,
+        )
+        return encryptionFactory
+
+
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 
 class _TestClassMethods(object):
-    _test_bytes = None
+    _test_bytes: Optional[bool] = None
 
     def test_signed_request_create_and_verify(self):
         request_data = data.copy()
@@ -192,7 +205,6 @@ class TestClassMethods(unittest.TestCase, _TestClassMethods):
     _test_bytes = False
 
 
-@unittest.skipIf(six.PY2, "only needed on PY3")
 class TestClassMethods_bytes(TestClassMethods):
     _test_bytes = True
 
@@ -208,13 +220,7 @@ class _TestFactoryMethods_Encrypted_core(object):
         TestFactoryMethods_Encrypted_AES
     """
 
-    _test_bytes = None
-
-    def _makeOne_obfuscation(self):
-        encryptionFactory = SecureEnough(
-            app_secret=app_secret, use_obfuscation=True, obfuscation_secret=app_secret
-        )
-        return encryptionFactory
+    _test_bytes: Optional[bool] = None
 
     def test_encryption_without_hashtime(self):
         encryptionFactory = self._makeOne_encryption()
@@ -254,7 +260,10 @@ class _TestFactoryMethods_Encrypted_core(object):
 
 
 class TestFactoryMethods_Encrypted_RSA(
-    unittest.TestCase, _RSA_Configuration, _TestFactoryMethods_Encrypted_core
+    unittest.TestCase,
+    _RSA_Configuration,
+    _Obfuscator_Configuration,
+    _TestFactoryMethods_Encrypted_core,
 ):
     """
     uses encryptionFactory defined in `_RSA_Configuration`
@@ -264,13 +273,15 @@ class TestFactoryMethods_Encrypted_RSA(
     _test_bytes = False
 
 
-@unittest.skipIf(six.PY2, "only needed on PY3")
 class TestFactoryMethods_Encrypted_RSA_bytes(TestFactoryMethods_Encrypted_RSA):
     _test_bytes = True
 
 
 class TestFactoryMethods_Encrypted_AES(
-    unittest.TestCase, _AES_Configuration, _TestFactoryMethods_Encrypted_core
+    unittest.TestCase,
+    _AES_Configuration,
+    _Obfuscator_Configuration,
+    _TestFactoryMethods_Encrypted_core,
 ):
     """
     uses encryptionFactory defined in `_AES_Configuration`
@@ -280,7 +291,6 @@ class TestFactoryMethods_Encrypted_AES(
     pass
 
 
-@unittest.skipIf(six.PY2, "only needed on PY3")
 class TestFactoryMethods_Encrypted_AES_bytes(TestFactoryMethods_Encrypted_AES):
     _test_bytes = True
 
@@ -319,7 +329,7 @@ class _TestVerificationMethods_Encrypted_core(object):
         TestVerificationMethods_Encrypted_AES
     """
 
-    _test_bytes = None
+    _test_bytes: Optional[bool] = None
 
     def test_encryption_timeout(self):
         encryptionFactory = self._makeOne_encryption()
@@ -354,7 +364,6 @@ class TestVerificationMethods_Encrypted_RSA(
     _test_bytes = False
 
 
-@unittest.skipIf(six.PY2, "only needed on PY3")
 class TestVerificationMethods_Encrypted_RSA_bytes(
     TestVerificationMethods_Encrypted_RSA
 ):
@@ -372,7 +381,6 @@ class TestVerificationMethods_Encrypted_AES(
     _test_bytes = False
 
 
-@unittest.skipIf(six.PY2, "only needed on PY3")
 class TestVerificationMethods_Encrypted_AES_bytes(
     TestVerificationMethods_Encrypted_AES
 ):
@@ -390,7 +398,7 @@ class _TestEncryptionUtilities_Encrypted_core(object):
         TestEncryptionUtilities_Encrypted_AES
     """
 
-    _test_bytes = None
+    _test_bytes: Optional[bool] = None
 
     def test_debug_hashtime(self):
         encryptionFactory = self._makeOne_encryption()
@@ -447,7 +455,6 @@ class TestEncryptionUtilities_Encrypted_RSA(
     _test_bytes = False
 
 
-@unittest.skipIf(six.PY2, "only needed on PY3")
 class TestEncryptionUtilities_Encrypted_RSA_bytes(
     TestEncryptionUtilities_Encrypted_RSA
 ):
@@ -465,7 +472,6 @@ class TestEncryptionUtilities_Encrypted_AES(
     _test_bytes = False
 
 
-@unittest.skipIf(six.PY2, "only needed on PY3")
 class TestEncryptionUtilities_Encrypted_AES_bytes(
     TestEncryptionUtilities_Encrypted_AES
 ):

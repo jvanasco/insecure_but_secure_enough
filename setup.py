@@ -23,7 +23,7 @@ with open(
 requires = [
     "pycryptodomex",
     "simplejson",
-    "six",
+    "typing_extensions",  # Literal, Protocol
 ]
 tests_require = ["pytest"]
 testing_extras = tests_require + []
@@ -37,8 +37,13 @@ setup(
     classifiers=[
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
-        "Programming Language :: Python :: 2",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
     ],
     keywords="web pylons pyramid",
     author="Jonathan Vanasco",
@@ -48,6 +53,7 @@ setup(
     packages=find_packages(
         where="src",
     ),
+    package_data={"insecure_but_secure_enough": ["py.typed"]},
     package_dir={"": "src"},
     include_package_data=True,
     zip_safe=False,
