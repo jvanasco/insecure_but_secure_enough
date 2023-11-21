@@ -1,5 +1,8 @@
 0.2.0
     * drop py2 for typing
+    * migrate docs from init.py to readme
+    * added some new tests
+    * this may not be backwards compatible as some default args and data types have changed
 
 0.1.4
 	* py3 improvements. attempts to handle b/str encodings

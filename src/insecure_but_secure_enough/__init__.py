@@ -8,7 +8,6 @@ from typing import Any
 from typing import Callable
 from typing import Dict
 from typing import List
-from typing import Literal
 from typing import Optional
 from typing import Tuple
 from typing import TYPE_CHECKING
@@ -19,6 +18,7 @@ import warnings
 from Cryptodome.Cipher import AES
 from Cryptodome.Cipher import PKCS1_OAEP
 from Cryptodome.PublicKey import RSA
+from typing_extensions import Literal
 from typing_extensions import Protocol
 
 

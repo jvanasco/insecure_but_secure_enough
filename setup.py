@@ -23,6 +23,7 @@ with open(
 requires = [
     "pycryptodomex",
     "simplejson",
+    "typing_extensions",  # Literal, Protocol
 ]
 tests_require = ["pytest"]
 testing_extras = tests_require + []
