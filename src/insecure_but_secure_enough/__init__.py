@@ -1,163 +1,53 @@
-"""
-This package is insecure, but secure enough.
-
-The idea for secure_enough to allow for "autologin cookies" and "instant login"
-urls for stupid social web applications.
-
-Two important things to note:
-
-1. You should not use this module for financial transactions or sensitive info.
-   That would be egregiously stupid.
-2. If you log someone in with this, you should note the login as "insecure" and
-   require them to provide a password to view sensitive data or any 'write'
-   activity.
-
-
-This package supports the following schemes for encrypting data:
-
-1. RSA encryption (really!)
-2. AES encryption
-
-This package supports the following schemes for signing data:
-
-1. No signing (just serialize)
-2. HMAC SHA1 signing
-3. HMAC SHA256 signing
-4. Request signing, as compatible with Facebook's auth scheme.
-
-The data transformation is as follows:
-
-1. serialize (convert to JSON)
-2. base64 encode
-3. ? obfuscate
-4. ? encrypt
-5. ? sign
-
-UNTESTED
-
-* You can create "configuration objects" that accept a timestamp and
-  return an appropriate secret/encryption key
-
-===================
-
-
-There is a bit of documentation in:
-    https://github.com/jvanasco/insecure_but_secure_enough/blob/main/insecure_but_secure_enough/__init__.py
-
-The following files give an interactive demo:
-
-    https://github.com/jvanasco/insecure_but_secure_enough/blob/main/demo.py
-    https://github.com/jvanasco/insecure_but_secure_enough/blob/main/demo_performance.py
-
-Also note that the github source distribution contains tests.
-
-===================
-
-Long ago, I had a class that would do a trivial encryption on cookie data,
-coupled with a lightweight hash to handle timeout events.  This way you wouldn't
-always have to decrypt data to do a light verification.
-
-The general flow was this:
-
-To encode:
-    cookie = encypted_data + timestamp + hash(encrypted_data + timestamp + secret)
-
-To decode:
-    (payload, timestamp, hash) = cookie
-    if hash != hash (payload, timestamp, secret):
-        raise InvalidHash()
-    if timestamp > timeout:
-        raise Timeout()
-    data = decrypt(payload)
-
-The encryption I used was a lightweight port from a CPAN module, so it could be
-blown away in seconds today.
-
-When i decided to re-implement this, looking around I found a handful of similar
-projects - which I've borrowed heavily from.
-
-They include:
-    https://github.com/dziegler/django-urlcrypt/blob/master/urlcrypt/lib.py
-    http://docs.pylonsproject.org/projects/pyramid/en/1.3-branch/api/session.html#pyramid.session.signed_serialize
-    https://developers.facebook.com/docs/authentication/signed_request/
-
-This largely re-implements all of those, along with some other functionality.
-
-Right now, data is a base64_url_encoded version of a string, concatenated list,
-or json object (for dicts).  I opted against using pickle, because this format
-makes it easier to work with other web technologies (js, php, etc).
-this might move to an all json version shortly.
-
-Check demo.py to see an overview of how this works.
-
-
-# Signed Requests
-
-signed_request_create
-and
-signed_request_verify
-
-are both handled as @classmethods - along with their support functions.
-that means you can call them directly without an object instance.
-
-I built them as @classmethods instead of package functions...
-because if you want to extend the options for digest mods, you can just
-subclass SecureEnough and overwrite _digestmod to add more providers.
-
-# Encrypting and Signing Cookies
-
-Encrypting cookies currently happens via a 'global' RSA key for an instance of
-SecureEnough().  [you provide details for it in the __init__()]
-
-You can use timestamped based app_secrets, obfuscators & rsa keys.
-
-The flow is as such:
-
-1. Subclass the ConfigurationProvider() and overwrite the relevant hooks.
-   The requesting mehtods pass a single argument - timestamp - which should
-   give you enough to go on.
-   Note that app_secret returns a string, while the obfuscator must return an
-   object that can `obfuscate` and `deobfuscate`; and rsa_key requires an
-   object that can `encrypt` and `decrypt`.
-   This libray provides default functionality through wrapper objects you can
-   mimic.
-
-2. Instantiate a SecureEnough() object, and register the relevant providers
-
-3. When encrypting data, SecureEnough() will ask the ConfigurationProvider()
-   for the approprite keys/secrets for the current time(). When decrypting data,
-   SecureEnough() will ask the ConfigurationProvider() for the approprite
-   keys/secrets for the time in the cookie/hash (if there is one).
-
-This flow will allow you to easily create a plethora of site secrets and RSA
-keys -- as in a new one each day -- which means that while this module is not
-actually secure, it is Secure Enough for most web applications.
-
---------------------------------------------------------------------------------
-
-insecure_but_secure_enough is released under the MIT license
-"""
-__VERSION__ = "0.1.4"
-
 # stdlib
 import base64
 import hashlib
 import hmac
+import json
 from time import time
-
-try:
-    import simplejson as json
-except ImportError:
-    import json
+from typing import Any
+from typing import Callable
+from typing import Dict
+from typing import List
+from typing import Literal
+from typing import Optional
+from typing import Tuple
+from typing import TYPE_CHECKING
+from typing import Union
+import warnings
 
 # pypi
-from six import PY3
 from Cryptodome.Cipher import AES
 from Cryptodome.Cipher import PKCS1_OAEP
 from Cryptodome.PublicKey import RSA
+from typing_extensions import Protocol
 
 
 # ==============================================================================
+
+__VERSION__ = "0.2.0"
+
+TYPE_decoded = Union[None, str, Dict, List]
+
+# Monkeypatch this to require strict inputs
+ALLOW_LAX_INPUTS = True
+
+# enable this to PRINT (not log) debug information.
+DEBUG_FUNC = False
+
+
+def warn_future_LAX_INPUTS(message: str) -> None:
+    message += (
+        " `ALLOW_LAX_INPUTS` is currently enabled by dfault, but will be removed."
+    )
+    warnings.warn(message, FutureWarning, stacklevel=2)
+
+
+class _CipherInterface(Protocol):
+    def encrypt(self, ciphertext: bytes) -> bytes:
+        ...
+
+    def decrypt(self, message: bytes) -> bytes:
+        ...
 
 
 class Invalid(Exception):
@@ -199,36 +89,18 @@ class InvalidTimeout(Invalid):
 # ==============================================================================
 
 
-def _base64_url_encode__py2(bytestring):
-    """
-    private method for b64 encoding.
-    this is just wrapping base64.urlsafe_b64encode,
-    to allow for a later switch
-    OUTPUT:
-        this ALWAYS returns `str`
-    """
-    padded_b64 = base64.urlsafe_b64encode(bytestring)
-    return padded_b64.replace("=", "")  # = is a reserved char
-
-
-def _base64_url_encode__py3(bytes_):
-    """
-    private method for b64 encoding.
-    this is just wrapping base64.urlsafe_b64encode,
-    to allow for a later switch
-    OUTPUT:
-        this ALWAYS returns `str`
-    """
-    bytes_ = bytes_.encode() if isinstance(bytes_, str) else bytes_
-    padded_b64 = base64.urlsafe_b64encode(bytes_)
-    padded_b64 = padded_b64.decode()  # bytes to string
-    return padded_b64.replace("=", "")  # = is a reserved char
-
-
-def split_hashed_format(payload):
+def split_hashed_format(payload: str) -> Tuple[str, int, str]:
+    if isinstance(payload, bytes):
+        if ALLOW_LAX_INPUTS:
+            warn_future_LAX_INPUTS("`split_hashed_format` received `bytes` not `str`.")
+            payload = payload.decode()
+        else:
+            raise ValueError(
+                "ALLOW_LAX_INPUTS==0: `payload` MUST be a `str`, not `bytes`."
+            )
     (signed_payload, time_then, hash_received) = payload.split("|")
-    time_then = int(float(time_then))
-    return (signed_payload, time_then, hash_received)
+    _time_then = int(float(time_then))
+    return (signed_payload, _time_then, hash_received)
 
 
 # ==============================================================================
@@ -237,14 +109,21 @@ def split_hashed_format(payload):
 class AesCipherHolder(object):
     """wraps an AES Symmetric Cipher"""
 
-    _secret = None
-    _cipher = None
-    _aes_key = None
-    _aes_iv = None
+    _secret: bytes
+    _aes_key: bytes
+    _aes_iv: bytes
 
-    def __init__(self, secret):
-        if PY3:
-            secret = secret.encode() if isinstance(secret, str) else secret
+    def __init__(self, secret: bytes):
+        if isinstance(secret, str):
+            if ALLOW_LAX_INPUTS:
+                warn_future_LAX_INPUTS(
+                    "`AesCipherHolder.__init__(secret)` received `bytes` not `str`."
+                )
+                secret = secret.encode()
+            else:
+                raise ValueError(
+                    "ALLOW_LAX_INPUTS==0: `secret` MUST be `bytes`, not `str`."
+                )
         self._secret = secret
 
         # compute a 32-byte key
@@ -255,38 +134,36 @@ class AesCipherHolder(object):
         self._aes_iv = hashlib.md5(secret).digest()
         assert len(self._aes_iv) == 16
 
-    def cipher(self):
+    def cipher(self) -> Any:
         # create an AES cipher
         # use CFB mode to avoid padding workflow
         cipher = AES.new(self._aes_key, AES.MODE_CFB, self._aes_iv)
         return cipher
 
-    def encrypt(self, payload_string):
-        if PY3:
-            payload_string = (
-                payload_string.encode()
-                if isinstance(payload_string, str)
-                else payload_string
-            )
-        return self.cipher().encrypt(payload_string)
+    def encrypt(self, payload: bytes) -> bytes:
+        _encrypted = self.cipher().encrypt(payload)
+        return _encrypted
 
-    def decrypt(self, bytes_):
-        """PY3 requires bytes_"""
-        return self.cipher().decrypt(bytes_)
+    def decrypt(self, payload: bytes) -> bytes:
+        _decrypted = self.cipher().decrypt(payload)
+        return _decrypted
 
 
 class RsaKeyHolder(object):
     """wraps an RSA key"""
 
-    key = None
-    _key_private = None
-    _key_private_passphrase = None
+    key: RSA.RsaKey
+    _key_private: str
+    _key_private_passphrase: Optional[str]
+    key_length_bytes: int
+    block_bytes: int
+    cipher: _CipherInterface
 
-    key_length_bytes = None
-    block_bytes = None
-    cipher = None
-
-    def __init__(self, key_private=None, key_private_passphrase=None):
+    def __init__(
+        self,
+        key_private: str,
+        key_private_passphrase: Optional[str] = None,
+    ):
         self._key_private = key_private
         self._key_private_passphrase = key_private_passphrase
         if self._key_private_passphrase:
@@ -298,117 +175,125 @@ class RsaKeyHolder(object):
         self.block_bytes = self.key_length_bytes - 2 * 20 - 2
         self.cipher = PKCS1_OAEP.new(self.key)
 
-    def encrypt(self, payload_string):
-        encrypted_blocks = []
-        for block in self._split_string(payload_string, self.block_bytes):
+    def encrypt(self, payload: bytes) -> bytes:
+        encrypted_blocks: List[bytes] = []
+        for block in self._split_bytes(payload, self.block_bytes):
             encrypted_block = self.cipher.encrypt(block)
             encrypted_blocks.append(encrypted_block)
-        if PY3:
-            return b"".join(encrypted_blocks)
-        return "".join(encrypted_blocks)
+        return b"".join(encrypted_blocks)
 
-    def decrypt_string(self, payload):
-        decrypted_blocks = []
-        for block in self._split_string(payload, self.key_length_bytes):
-            decrypted_block = self.cipher.decrypt(block)
-            decrypted_blocks.append(decrypted_block)
-        return "".join(decrypted_blocks)
-
-    def decrypt_bytes(self, payload):
-        decrypted_blocks = []
+    def decrypt(self, payload: bytes) -> bytes:
+        decrypted_blocks: List[bytes] = []
         for block in self._split_bytes(payload, self.key_length_bytes):
             decrypted_block = self.cipher.decrypt(block)
             decrypted_blocks.append(decrypted_block)
         return b"".join(decrypted_blocks)
 
-    if PY3:
-        # py3 has us working on bytes
-        decrypt = decrypt_bytes
-    else:
-        decrypt = decrypt_string
-
-    def _split_string(self, payload_string, block_size):
+    def _split_string(self, payload_string: str, block_size: int) -> List[bytes]:
         "used in PY2 encoding+decoding and PY3 encoding"
         blocks = []
         start = 0
         while start < len(payload_string):
-            block = payload_string[start : (start + block_size)]
+            block = payload_string[start : (start + block_size)]  # noqa: E203
             blocks.append(block)
             start += block_size
-        if PY3:
-            return [b.encode() for b in blocks]  # PY3 wants bytes
-        return blocks
+        return [b.encode() for b in blocks]  # PY3 wants bytes
 
-    def _split_bytes(self, payload_bytes, block_size):
+    def _split_bytes(self, payload_bytes: bytes, block_size: int) -> List[bytes]:
         "only used in PY3 decoding"
         blocks = []
         start = 0
         while start < len(payload_bytes):
-            block = payload_bytes[start : (start + block_size)]
+            block = payload_bytes[start : (start + block_size)]  # noqa: E203
             blocks.append(block)
             start += block_size
         return blocks
 
 
 class Obfuscator(object):
-    obfuscation_key = None
-    obfuscation_secret = None
+    # actually used by our default Obfuscator
+    obfuscation_key: str
+    # only used to generate the Obfuscator key
+    obfuscation_secret: Optional[bytes] = None
 
-    def __init__(self, obfuscation_key, obfuscation_secret):
-        self.obfuscation_secret = obfuscation_secret
+    def __init__(
+        self,
+        obfuscation_key: Optional[str] = None,
+        obfuscation_secret: Union[bytes, str, None] = None,
+    ):
+        if all((obfuscation_key, obfuscation_secret)) or not any(
+            (obfuscation_key, obfuscation_secret)
+        ):
+            raise ValueError(
+                "Submit one and only one of: `obfuscation_key` or `obfuscation_secret`."
+            )
+
+        # `self.obfuscation_secret` *MUST* be in bytes
+        _obfuscation_secret = (
+            obfuscation_secret.encode()
+            if isinstance(obfuscation_secret, str)
+            else obfuscation_secret
+        )
+        if _obfuscation_secret:
+            self.obfuscation_secret = _obfuscation_secret
+
+        # generate the `obfuscation_key` if needed
         if not obfuscation_key:
-            if PY3:
-                obfuscation_secret = (
-                    obfuscation_secret.encode()
-                    if isinstance(obfuscation_secret, str)
-                    else obfuscation_secret
-                )
+            if not _obfuscation_secret:
+                raise ValueError("`obfuscation_secret` is required.")
             obfuscation_key = (
-                hashlib.sha512(obfuscation_secret).hexdigest()
-                + hashlib.sha512(obfuscation_secret[::-1]).hexdigest()
+                hashlib.sha512(_obfuscation_secret).hexdigest()
+                + hashlib.sha512(_obfuscation_secret[::-1]).hexdigest()
             )
         self.obfuscation_key = obfuscation_key
 
-    def obfuscate(self, text):
+    def obfuscate(
+        self,
+        text: str,
+    ) -> str:
         """
-        INPUT:
-            PY2 - text is `str`
-        OUTPUT:
-            always returns `str`
+        Generate obfuscated text
         """
-        # if PY3:
-        #    text = text.decode() if not isinstance(text, str) else text
         # copy out our OBFUSCATE_KEY to the length of the text
         key = self.obfuscation_key * (len(text) // len(self.obfuscation_key) + 1)
+
+        if DEBUG_FUNC:
+            print("============== obfuscate ==============")
+            print("* text:", type(text), text)
+            print("* key:", type(key), key)
 
         # XOR each character from our input
         # with the corresponding character from the key
         xor_gen = (chr(ord(t) ^ ord(k)) for (t, k) in zip(text, key))
-        return "".join(xor_gen)
+        result = "".join(xor_gen)
+
+        return result
 
     deobfuscate = obfuscate
 
 
 class ConfigurationProvider(object):
-    """Create and build configuration providers"""
+    """Create and build configuration providers.
+    This class defines an interface that can be subclassed.
+    """
 
-    def app_secret(timestamp):
+    def app_secret(self, timestamp: Optional[int] = None) -> str:
         """
         for a given timestamp, this should return the appropriate app secret
         """
         return ""
 
-    def obfuscator(timestamp):
+    def obfuscator(self, timestamp: Optional[int] = None) -> Obfuscator:
         """
-        for a given timestamp, this should return the appropriate obfuscator
+        for a given timestamp, this should return the appropriate Obfuscator
         """
         obfuscation_secret = ""
         obfuscation_key = ""
         return Obfuscator(obfuscation_key, obfuscation_secret)
 
-    def rsa_key(timestamp):
+    def rsa_key(self, timestamp: Optional[int] = None) -> RsaKeyHolder:
         """
-        for a given timestamp, this should return the appropriate RSA Key
+        for a given timestamp, this should return the appropriate RSA Key Holder
         """
         rsa_key_private = ""
         rsa_key_private_passphrase = ""
@@ -417,138 +302,185 @@ class ConfigurationProvider(object):
             key_private_passphrase=rsa_key_private_passphrase,
         )
 
-    def aes_cipher(timestamp):
+    def aes_cipher(self, timestamp: Optional[int] = None) -> AesCipherHolder:
         """
-        for a given timestamp, this should return the appropriate AES object
+        for a given timestamp, this should return the appropriate AES Cipher Holder
         """
-        aes_secret = ""
+        aes_secret = b""
         return AesCipherHolder(aes_secret)
 
 
 class SecureEnough(object):
-    use_aes_encryption = False
-    use_obfuscation = False
-    use_rsa_encryption = False
+    use_aes_encryption: bool = False
+    use_obfuscation: bool = False
+    use_rsa_encryption: bool = False
 
     # storage
-    _config_provider_aes = None
-    _config_provider_app_secret = None
-    _config_provider_obfuscation = None
-    _config_provider_rsa = None
+    _ConfigurationProvider_app_secret: Optional[ConfigurationProvider] = None
+    _ConfigurationProvider_aes: Optional[ConfigurationProvider] = None
+    _ConfigurationProvider_obfuscation: Optional[ConfigurationProvider] = None
+    _ConfigurationProvider_rsa: Optional[ConfigurationProvider] = None
 
-    _app_secret = None
-    _aes_cipher = None
-    _obfuscator = None
-    _rsa_key = None
+    # Holders
+    _app_secret: Optional[str] = None
+    _AesCipherHolder: Optional[AesCipherHolder] = None
+    _Obfuscator = None
+    _RsaKeyHolder = None
 
     def __init__(
         self,
-        config_app_secret=None,
-        app_secret="",
-        use_aes_encryption=False,
-        config_aes=None,
-        aes_secret=None,
-        use_rsa_encryption=False,
-        config_rsa=None,
-        rsa_key_private=None,
-        rsa_key_private_passphrase=None,
-        use_obfuscation=False,
-        config_obfuscation=None,
-        obfuscation_secret="",
-        obfuscation_key=None,
+        # ConfigurationProvider
+        config_app_secret: Optional[ConfigurationProvider] = None,
+        config_aes: Optional[ConfigurationProvider] = None,
+        config_rsa: Optional[ConfigurationProvider] = None,
+        config_obfuscation: Optional[ConfigurationProvider] = None,
+        # app secret
+        app_secret: Optional[str] = None,
+        # aes
+        use_aes_encryption: bool = False,
+        aes_secret: Optional[bytes] = None,
+        # rsa
+        use_rsa_encryption: bool = False,
+        rsa_key_private: Optional[str] = None,
+        rsa_key_private_passphrase: Optional[str] = None,
+        # obfuscation
+        use_obfuscation: bool = False,
+        obfuscation_secret: Optional[str] = None,
+        obfuscation_key: Optional[str] = None,
     ):
+        # app serect
+        if config_app_secret and app_secret:
+            raise ValueError("Supply only one of: `config_app_secret`,  `app_secret`.")
+
         if config_app_secret:
-            self._config_provider_app_secret = config_app_secret
+            self.ConfigurationProvider = config_app_secret
         else:
             self._app_secret = app_secret
 
+        # aes
         if use_aes_encryption:
-            if not any((config_aes, aes_secret)):
-                raise ValueError("Must submit one of: aes_secret, config_aes")
+            if not any((config_aes, aes_secret)) or all((config_aes, aes_secret)):
+                raise ValueError("Must submit only one of: `aes_secret`, `config_aes`.")
             self.use_aes_encryption = use_aes_encryption
             if config_aes:
-                self._config_provider_aes = config_aes
+                self._ConfigurationProvider_aes = config_aes
             else:
-                self._aes_cipher = AesCipherHolder(aes_secret)
+                if not isinstance(aes_secret, bytes):
+                    if ALLOW_LAX_INPUTS:
+                        warn_future_LAX_INPUTS(
+                            "`SecureEnough.__init__(aes_secret)` received `str` not `bytes`."
+                        )
+                    else:
+                        raise ValueError(
+                            "ALLOW_LAX_INPUTS==0: `aes_secret` *must* be `bytes`"
+                        )
+                if TYPE_CHECKING:
+                    assert aes_secret is not None
+                self._AesCipherHolder = AesCipherHolder(aes_secret)
 
         if use_rsa_encryption:
+            if not any((config_rsa, rsa_key_private)) or all(
+                (config_rsa, rsa_key_private)
+            ):
+                raise ValueError(
+                    "Must submit only one of: `config_rsa`, `rsa_key_private`."
+                )
             self.use_rsa_encryption = use_rsa_encryption
             if config_rsa:
-                self._config_provider_rsa = config_rsa
+                self._ConfigurationProvider_rsa = config_rsa
             else:
-                self._rsa_key = RsaKeyHolder(
+                if TYPE_CHECKING:
+                    assert rsa_key_private is not None
+                self._RsaKeyHolder = RsaKeyHolder(
                     key_private=rsa_key_private,
                     key_private_passphrase=rsa_key_private_passphrase,
                 )
 
         if use_obfuscation:
+            if all((obfuscation_key, obfuscation_secret)) or not any(
+                (obfuscation_key, obfuscation_secret)
+            ):
+                raise ValueError(
+                    "Must submit only one of: `obfuscation_secret`, `obfuscation_key`."
+                )
             self.use_obfuscation = use_obfuscation
             if config_obfuscation:
-                self._config_provider_obfuscation = config_obfuscation
+                self._ConfigurationProvider_obfuscation = config_obfuscation
             else:
-                self._obfuscator = Obfuscator(obfuscation_key, obfuscation_secret)
+                self._Obfuscator = Obfuscator(obfuscation_key, obfuscation_secret)
 
-    def app_secret(self, timestamp=None):
+    def app_secret(self, timestamp: Optional[int] = None) -> str:
         """internal function to return an app secret"""
-        if self._config_provider_app_secret:
-            return self._config_provider_app_secret.app_secret(timestamp)
-        return self._app_secret
+        if self._ConfigurationProvider_app_secret:
+            return self._ConfigurationProvider_app_secret.app_secret(timestamp)
+        if self._app_secret:
+            return self._app_secret
+        raise ValueError("No provider configured for: `.app_secret`.")
 
-    def aes_cipher(self, timestamp=None):
+    def aes_cipher(self, timestamp: Optional[int] = None) -> AesCipherHolder:
         """internal function to return an aes cipher"""
-        if self._config_provider_aes:
-            return self._config_provider_aes.aes_cipher(timestamp)
-        return self._aes_cipher
+        if self._ConfigurationProvider_aes:
+            return self._ConfigurationProvider_aes.aes_cipher(timestamp)
+        if self._AesCipherHolder:
+            return self._AesCipherHolder
+        raise ValueError("No provider configured for: `.aes_cipher`.")
 
-    def obfuscator(self, timestamp=None):
+    def obfuscator(self, timestamp: Optional[int] = None) -> Obfuscator:
         """internal function to return an obfuscator"""
-        if self._config_provider_obfuscation:
-            return self._config_provider_obfuscation.obfuscator(timestamp)
-        return self._obfuscator
+        if self._ConfigurationProvider_obfuscation:
+            return self._ConfigurationProvider_obfuscation.obfuscator(timestamp)
+        if self._Obfuscator:
+            return self._Obfuscator
+        raise ValueError("No provider configured for: `.obfuscator`.")
 
-    def rsa_key(self, timestamp=None):
+    def rsa_key(self, timestamp: Optional[int] = None) -> RsaKeyHolder:
         """internal function to return a rsa key"""
-        if self._config_provider_rsa:
-            return self._config_provider_rsa.rsa_key(timestamp)
-        return self._rsa_key
+        if self._ConfigurationProvider_rsa:
+            return self._ConfigurationProvider_rsa.rsa_key(timestamp)
+        if self._RsaKeyHolder:
+            return self._RsaKeyHolder
+        raise ValueError("No provider configured for: `.rsa_key`.")
 
     @classmethod
-    def _base64_url_encode(cls, bytes_):
+    def _base64_url_encode(cls, bytes_: bytes) -> str:
         """
         internal classmethod for b64 encoding.
 
         INPUT:
-            PY2: `str`
             PY3: `bytes`
         OUTPUT:
             this ALWAYS returns `str`
         """
-        if PY3:
-            return _base64_url_encode__py3(bytes_)
-        return _base64_url_encode__py2(bytes_)
+        # bytes_ = bytes_.encode() if isinstance(bytes_, str) else bytes_
+        padded_b64 = base64.urlsafe_b64encode(bytes_)
+        padded_b64_str = padded_b64.decode()  # bytes to string
+        return padded_b64_str.replace("=", "")  # = is a reserved char
 
     @classmethod
-    def _base64_url_decode(cls, inp):
+    def _base64_url_decode(cls, payload: str) -> bytes:
         """
         internal classmethod for b64 decoding. this is essentially wrapping
         base64.base64_url_decode, to allow for a later switch
-
-        INPUT:
-            PY2: `str`
-            PY3: `bytes`
-        OUTPUT:
-            PY2 str
-            PY3 bytes
         """
-        padding_factor = (4 - len(inp) % 4) % 4
-        inp += "=" * padding_factor
-        decoded = base64.urlsafe_b64decode(inp)
+        if isinstance(payload, bytes):
+            if ALLOW_LAX_INPUTS:
+                warn_future_LAX_INPUTS(
+                    "`_base64_url_decode(payload)` received `bytes` not `str`."
+                )
+                payload = payload.decode()
+            else:
+                raise ValueError("ALLOW_LAX_INPUTS==0: `payload` *must* be `bytes``")
+        padding_factor = (4 - len(payload) % 4) % 4
+        payload += "=" * padding_factor
+        decoded = base64.urlsafe_b64decode(payload)
         return decoded
 
+    from types import ModuleType
+
     @classmethod
-    def _digestmod(cls, algorithm=None):
+    def _digestmod(cls, algorithm: str) -> Callable:
         """
-        internal class and instance method for returning an algoritm function
+        internal class and instance method for returning an algorithm function
         """
         if algorithm == "HMAC-SHA256":
             digestmod = hashlib.sha256
@@ -560,8 +492,12 @@ class SecureEnough(object):
 
     @classmethod
     def signed_request_create(
-        cls, data, secret=None, issued_at=None, algorithm="HMAC-SHA256"
-    ):
+        cls,
+        data: Dict,
+        secret: Union[bytes, str],
+        issued_at: Optional[int] = None,
+        algorithm: str = "HMAC-SHA256",
+    ) -> str:
         """
         classmethod.
         creates a signed token for `data` using `secret`, calculated by
@@ -570,7 +506,6 @@ class SecureEnough(object):
         algorithm in there.
         """
         _data = data.copy()
-        digestmod = cls._digestmod(algorithm)
         if "algorithm" in _data and _data["algorithm"] != algorithm:
             raise InvalidAlgorithm(
                 "`algorithm` defined in payload already, " "and as another format"
@@ -578,28 +513,25 @@ class SecureEnough(object):
         _data["algorithm"] = algorithm
         if issued_at and "issued_at" not in _data:
             _data["issued_at"] = issued_at
+        _secret = secret.encode() if isinstance(secret, str) else secret
+        _digestmod = cls._digestmod(algorithm)
         payload = json.dumps(_data)
-        if PY3:
-            payload = payload.encode()  # str to bytes
-        payload = cls._base64_url_encode(payload)
-        if PY3:
-            payload = payload.encode()  # str to bytes
-            secret = secret.encode() if isinstance(secret, str) else secret
-            # hmac.new(secret,msg=payload,digestmod=digestmod).hexdigest()
-        signature = hmac.new(secret, msg=payload, digestmod=digestmod).hexdigest()
-        if PY3:
-            return signature + "." + payload.decode()  # bytes to string
+        payload = cls._base64_url_encode(payload.encode())
+        # hmac.new(secret,msg=payload,digestmod=_digestmod).hexdigest()
+        signature = hmac.new(
+            _secret, msg=payload.encode(), digestmod=_digestmod
+        ).hexdigest()
         return signature + "." + payload
 
     @classmethod
     def signed_request_verify(
         cls,
-        signed_request=None,
-        secret=None,
-        timeout=None,
-        algorithm="HMAC-SHA256",
-        payload_only=False,
-    ):
+        signed_request: str,
+        secret: Union[bytes, str],
+        timeout: Optional[int] = None,
+        algorithm: str = "HMAC-SHA256",
+        payload_only: bool = False,
+    ) -> Union[Tuple[bool, Dict], Dict, Literal[False]]:
         """
         This is compatible with signed requests from facebook.com
             (https://developers.facebook.com/docs/authentication/signed_request/)
@@ -612,26 +544,26 @@ class SecureEnough(object):
         extracted data.  No boolean will be returned.  If a timeout is also
         submitted, it will return the payload on success and False on failure.
         """
-        if PY3:
-            # ensure we have a string...
-            signed_request = (
-                signed_request.decode()
-                if isinstance(signed_request, bytes)
-                else signed_request
-            )
-
-        digestmod = cls._digestmod(algorithm)
-
+        if isinstance(signed_request, bytes):
+            if ALLOW_LAX_INPUTS:
+                warn_future_LAX_INPUTS(
+                    "`signed_request_verify(signed_request)` received `bytes` not `str`."
+                )
+                signed_request = signed_request.decode()
+            else:
+                raise ValueError(
+                    "ALLOW_LAX_INPUTS==0: `signed_request` MUST be a `str`, not `bytes`."
+                )
         (signature, payload) = signed_request.split(".")
-
+        digestmod = cls._digestmod(algorithm)
         try:
-            decoded_signature = cls._base64_url_decode(signature)
+            # decoded_signature = cls._base64_url_decode(signature)
             payload_decoded = cls._base64_url_decode(payload)
             data = json.loads(payload_decoded)
         except json.JSONDecodeError as exc:
             raise InvalidPayload(exc.msg)
-        except:
-            raise InvalidPayload("Can't decode payload (_base64 error?)")
+        except Exception:
+            raise InvalidPayload("Can't decode payload (_base64 error?).")
 
         if data.get("algorithm").upper() != algorithm:
             raise InvalidAlgorithm(
@@ -639,11 +571,10 @@ class SecureEnough(object):
                 % (algorithm, data.get("algorithm"))
             )
 
-        if PY3:
-            secret = secret.encode() if isinstance(secret, str) else secret
-            payload = payload.encode() if isinstance(payload, str) else secret
+        _secret = secret.encode() if isinstance(secret, str) else secret
+        _payload = payload.encode() if isinstance(payload, str) else payload
 
-        expected_sig = hmac.new(secret, msg=payload, digestmod=digestmod).hexdigest()
+        expected_sig = hmac.new(_secret, msg=_payload, digestmod=digestmod).hexdigest()
 
         if signature != expected_sig:
             raise InvalidSignature(
@@ -663,7 +594,7 @@ class SecureEnough(object):
             return data
         return (True, data)
 
-    def _serialize(self, data):
+    def _serialize(self, data: Union[Dict, List, Tuple, str]) -> str:
         """
         internal function to serialize multiple data types for transmission
         input:
@@ -678,16 +609,16 @@ class SecureEnough(object):
         elif isinstance(data, list) or isinstance(data, tuple):
             serialized = "|".join(data)
             if "|" in serialized:
-                raise ValueError("`|` only allowed in dicts")
+                raise ValueError("`|` only allowed in dict.")
         elif isinstance(data, str):
             serialized = data
             if "|" in serialized:
-                raise ValueError("`|` only allowed in dicts")
+                raise ValueError("`|` only allowed in dict.")
         else:
-            raise TypeError("invalid type for serialization")
+            raise TypeError("invalid type for serialization.")
         return serialized
 
-    def _deserialize(self, serialized):
+    def _deserialize(self, serialized: str) -> TYPE_decoded:
         """internal function to deserialize multiple data types from transmission"""
         data = None
         try:
@@ -699,44 +630,52 @@ class SecureEnough(object):
                 data = serialized
         return data
 
-    def _hmac_for_timestamp(self, payload, timestamp, algorithm="HMAC-SHA1"):
+    def _hmac_for_timestamp(
+        self, payload: bytes, timestamp: int, algorithm: str = "HMAC-SHA1"
+    ) -> str:
         """
         internal function. calcuates an hmac for a timestamp.
         to accomplish this, we just pad the payload with the given timestamp
 
         input:
-            PY2: payload = string
             PY3: payload = bytes
         returns:
             always returns a string
         """
         digestmod = self._digestmod(algorithm)
-        message = "%s||%s" % (payload, timestamp)
-        app_secret = self.app_secret(timestamp=timestamp)
-        if PY3:
-            app_secret = (
-                app_secret.encode() if isinstance(app_secret, str) else app_secret
-            )
-            message = message.encode()
-            # hmac.new(app_secret,msg=message,digestmod=digestmod).hexdigest()
-        return hmac.new(app_secret, msg=message, digestmod=digestmod).hexdigest()
+        message = "%s||%s" % (payload.decode(), timestamp)
+        app_secret = self.app_secret(timestamp=timestamp)  # str
+        # hmac.new(app_secret,msg=message,digestmod=digestmod).hexdigest()
+        return hmac.new(
+            app_secret.encode(), msg=message.encode(), digestmod=digestmod
+        ).hexdigest()
 
-    def encode(self, data, hashtime=True, hmac_algorithm="HMAC-SHA1", time_now=None):
+    def encode(
+        self,
+        data: str,
+        hashtime: bool = True,
+        time_now: Optional[int] = None,
+        hmac_algorithm: Optional[str] = "HMAC-SHA1",
+    ) -> str:
         """
-        public method. encodes data.
+        public method. encodes data::string.
         time_now should ONLY be used for testing/debugging situations when an
         invalid payload is needed.
         """
-        if PY3:
-            if isinstance(data, bytes):
-                data = data.decode()
-
-        if hmac_algorithm and not hashtime:
-            hashtime = True
+        if DEBUG_FUNC:
+            print("============== encode ==============")
+            print("* data:", type(data), data)
+            print("* hashtime:", type(hashtime), hashtime)
+            print("* time_now:", type(time_now), time_now)
+            print("* hmac_algorithm:", type(hmac_algorithm), hmac_algorithm)
 
         # compute the time, which is used for verification
         # and coordinating the right secrets
         if hashtime:
+            if not hmac_algorithm:
+                raise ValueError(
+                    "Must supply `hmac_algorithm` if `hashtime` requested."
+                )
             if time_now is None:
                 time_now = int(time())
             else:
@@ -750,47 +689,69 @@ class SecureEnough(object):
 
         # .. optionally include lightweight obfuscation
         if self.use_obfuscation:
-            # the output of `.obfuscate()` will be a `str`
+            # deobfuscate == obfuscate: str -> str
             payload = self.obfuscator(timestamp=time_now).obfuscate(payload)
 
+        # byte operations
+        _payload = payload.encode()
         # .. optionally encrypt the payload
-        if self.use_rsa_encryption:
-            # `.encrypt()` expects a `str` and returns a `str` or `bytes`
-            payload = self.rsa_key(timestamp=time_now).encrypt(payload)
-        elif self.use_aes_encryption:
-            # `.encrypt()` expects a `str` and returns a `str` or `bytes`
-            payload = self.aes_cipher(timestamp=time_now).encrypt(payload)
-
-        # finally urlencode it
-        payload = self._base64_url_encode(payload)
+        if self.use_rsa_encryption or self.use_aes_encryption:
+            if self.use_rsa_encryption:
+                # `.encrypt()` expects a `bytes` and returns `bytes`
+                _payload = self.rsa_key(timestamp=time_now).encrypt(_payload)
+            elif self.use_aes_encryption:
+                # `.encrypt()` expects a `bytes` and returns `bytes`
+                _payload = self.aes_cipher(timestamp=time_now).encrypt(_payload)
+        # finally urlencode it: bytes->str
+        payload = self._base64_url_encode(_payload)
 
         # if we're computing time-sensitive keys or expiration, we'll return a compound token
         if hashtime:
+            if TYPE_CHECKING:
+                assert time_now is not None
+                assert hmac_algorithm is not None
             # format compatible with `decode` and `debug_hashtime`
-            hash = self._hmac_for_timestamp(payload, time_now, algorithm=hmac_algorithm)
-            compound = "%s|%s|%s" % (payload, time_now, hash)
+            hashed = self._hmac_for_timestamp(
+                payload.encode(), time_now, algorithm=hmac_algorithm
+            )
+            compound = "%s|%s|%s" % (payload, time_now, hashed)
             return compound
+
         # otherwise, just return the payload
         return payload
 
-    def decode(self, payload, hashtime=True, timeout=None, hmac_algorithm="HMAC-SHA1"):
+    def decode(
+        self,
+        payload: str,
+        hashtime: bool = True,
+        timeout: Optional[int] = None,
+        hmac_algorithm: Optional[str] = "HMAC-SHA1",
+    ) -> TYPE_decoded:
         """public method. decodes data."""
-        if PY3:
-            if isinstance(payload, bytes):
-                payload = payload.decode()
-
-        if hmac_algorithm and not hashtime:
-            hashtime = True
+        if DEBUG_FUNC:
+            print("============== decode ==============")
+            print("* payload:", type(payload), payload)
+            print("* hashtime:", type(hashtime), hashtime)
+            print("* timeout:", type(timeout), timeout)
+            print("* hmac_algorithm:", type(hmac_algorithm), hmac_algorithm)
 
         # if we dont have hashtime support, this needs to be None...
-        time_then = None
+        time_then: Optional[int] = None
+
+        if hashtime:
+            if not hmac_algorithm:
+                raise ValueError(
+                    "Must supply `hmac_algorithm` if `hashtime` requested."
+                )
 
         # try to validate the hashtime
         if hashtime:
+            if TYPE_CHECKING:
+                assert hmac_algorithm is not None
             # format compatible with `encode` and `debug_hashtime`
             (signed_payload, time_then, hash_received) = split_hashed_format(payload)
             hash_expected = self._hmac_for_timestamp(
-                signed_payload, time_then, algorithm=hmac_algorithm
+                signed_payload.encode(), time_then, algorithm=hmac_algorithm
             )
             if hash_expected != hash_received:
                 raise InvalidChecksum()
@@ -801,33 +762,39 @@ class SecureEnough(object):
                     raise InvalidTimeout()
             payload = signed_payload
 
+        # decodes into bytes: bytes/str -> bytes
+        _payload = self._base64_url_decode(payload)
+
         # decoding is done in reverse of encoding
         # so decrypt, then deobfuscate
         # this always returns bytes
-        payload = self._base64_url_decode(payload)
+        if self.use_rsa_encryption or self.use_aes_encryption:
+            # decrypt: bytes->bytes
+            if self.use_rsa_encryption:
+                _payload = self.rsa_key(timestamp=time_then).decrypt(_payload)
+            elif self.use_aes_encryption:
+                _payload = self.aes_cipher(timestamp=time_then).decrypt(_payload)
 
-        if self.use_rsa_encryption:
-            payload = self.rsa_key(timestamp=time_then).decrypt(payload)
-        elif self.use_aes_encryption:
-            payload = self.aes_cipher(timestamp=time_then).decrypt(payload)
-
+        # to string
+        payload = _payload.decode()
         if self.use_obfuscation:
-            if PY3:
-                payload = payload.decode()
+            # deobfuscate == obfuscate: str -> str
             payload = self.obfuscator(timestamp=time_then).deobfuscate(payload)
 
-        payload = self._deserialize(payload)
+        # str to any
+        deserialized = self._deserialize(payload)
+        return deserialized
 
-        return payload
-
-    def debug_hashtime(self, payload, timeout=None, hmac_algorithm="HMAC-SHA1"):
+    def debug_hashtime(
+        self,
+        payload: str,
+        timeout: Optional[int] = None,
+        hmac_algorithm: str = "HMAC-SHA1",
+    ) -> Dict:
         """
         useful for debugging.
         format compatible with `encode` and `decode`
         """
-        if PY3:
-            if isinstance(payload, bytes):
-                payload = payload.decode()
 
         (signed_payload, time_then, hash_received) = split_hashed_format(payload)
 
@@ -847,31 +814,33 @@ class SecureEnough(object):
         except Exception as e:
             decoding_error = e
 
-        return {
+        rval: Dict = {
             "payload": payload,
             "signed_payload": signed_payload,
             "time_then": time_then,
             "time_now": time_now,
+            "timeout_valid": timeout_valid,
             "hash_received": hash_received,
             "checksum_valid": checksum_valid,
             "decoded": decoded,
             "decoding_error": decoding_error,
         }
+        return rval
 
-    def serialized_plaintext_encode(self, payload):
+    def serialized_plaintext_encode(self, payload: str) -> str:
         return self.encode(payload, hashtime=False, hmac_algorithm=None)
 
-    def serialized_plaintext_decode(self, payload):
+    def serialized_plaintext_decode(self, payload: str) -> TYPE_decoded:
         return self.decode(payload, hashtime=False, hmac_algorithm=None)
 
-    def hmac_sha1_encode(self, payload):
+    def hmac_sha1_encode(self, payload: str) -> str:
         return self.encode(payload, hashtime=True, hmac_algorithm="HMAC-SHA1")
 
-    def hmac_sha1_decode(self, payload):
+    def hmac_sha1_decode(self, payload: str) -> TYPE_decoded:
         return self.decode(payload, hashtime=True, hmac_algorithm="HMAC-SHA1")
 
-    def hmac_sha256_encode(self, payload):
+    def hmac_sha256_encode(self, payload: str) -> str:
         return self.encode(payload, hashtime=True, hmac_algorithm="HMAC-SHA256")
 
-    def hmac_sha256_decode(self, payload):
+    def hmac_sha256_decode(self, payload: str) -> TYPE_decoded:
         return self.decode(payload, hashtime=True, hmac_algorithm="HMAC-SHA256")
