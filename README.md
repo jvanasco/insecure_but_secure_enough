@@ -2,11 +2,11 @@
 
 # Quick Overview
 
-This package is "insecure"", but secure enough.
+This package is "insecure", but secure enough.
 
-The idea for secure_enough to allow for "autologin cookies" and "instant login" urls for social web applications.
+The idea behing being "secure_enough" is to allow for "autologin cookies" and "instant login" urls for social web applications.
 
-This package is similar to "ItsDangerous", which is now popular but was unknown when this package was first written.
+This package is very similar to "ItsDangerous" - which is now popular, but was unknown when this package was first written.
 
 Two important things to note:
 
@@ -16,7 +16,7 @@ Two important things to note:
 
 This package supports the following schemes for encrypting data:
 
-1. RSA encryption (really!)
+1. RSA encryption
 2. AES encryption
 
 
@@ -56,8 +56,8 @@ To decode:
         raise Timeout()
     data = decrypt(payload)
 
-The encryption I used was a lightweight port from a CPAN module, so it could be
-blown away in seconds today.
+The encryption I used was a lightweight port from a CPAN (Perl) module, so it
+could be blown away in seconds today.
 
 When i decided to re-implement this, looking around I found a handful of similar
 projects - which I've borrowed heavily from.
@@ -70,48 +70,48 @@ They include:
 
 This largely re-implements all of those, along with some other functionality.
 
-Right now, data is a base64_url_encoded version of a string, concatenated list,
-or json object (for dicts).  I opted against using pickle, because this format
+Right now, data is a `base64_url_encoded` version of a string, concatenated list,
+or json object (for dicts).  I opted against using `pickle`, because this format
 makes it easier to work with other web technologies (js, php, etc).
-this might move to an all json version shortly.
+This might move to an all json version one day.
 
-Check demo.py to see an overview of how this works.
+Check `demo.py` to see an overview of how this works.
 
 ## Signed Requests
 
 `signed_request_create` and `signed_request_verify`
 
-are both handled as @classmethods - along with their support functions.
-that means you can call them directly without an object instance.
+are both handled as `@classmethods` - along with their support functions.
+That means you can call them directly without an object instance.
 
-I built them as @classmethods instead of package functions...
+I built them as `@classmethods` instead of package functions...
 because if you want to extend the options for digest mods, you can just
-subclass SecureEnough and overwrite _digestmod to add more providers.
+subclass `SecureEnough` and overwrite `_digestmod` to add more providers.
 
 ## Encrypting and Signing Cookies
 
 Encrypting cookies currently happens via a 'global' RSA key for an instance of
-SecureEnough().  [you provide details for it in the __init__()]
+`SecureEnough()`.  [you provide details for it in the `__init__()`]
 
 You can use timestamped based app_secrets, obfuscators & rsa keys.
 
 The flow is as such:
 
-1. Subclass the ConfigurationProvider() and overwrite the relevant hooks.
-   The requesting mehtods pass a single argument - timestamp - which should
+1. Subclass the `ConfigurationProvider()` and overwrite the relevant hooks.
+   The requesting mehtods pass a single argument - `timestamp` - which should
    give you enough to go on.
-   Note that app_secret returns a string, while the obfuscator must return an
-   object that can `obfuscate` and `deobfuscate`; and rsa_key requires an
+   Note that `app_secret` returns a string, while the obfuscator must return an
+   object that can `obfuscate` and `deobfuscate`; and `rsa_key` requires an
    object that can `encrypt` and `decrypt`.
    This libray provides default functionality through wrapper objects you can
    mimic.
 
-2. Instantiate a SecureEnough() object, and register the relevant providers
+2. Instantiate a `SecureEnough()` object, and register the relevant providers
 
-3. When encrypting data, SecureEnough() will ask the ConfigurationProvider()
-   for the approprite keys/secrets for the current time(). When decrypting data,
-   SecureEnough() will ask the ConfigurationProvider() for the approprite
-   keys/secrets for the time in the cookie/hash (if there is one).
+3. When encrypting data, `SecureEnough()` will ask the `ConfigurationProvider()`
+   for the approprite keys/secrets for the current `time()`. When decrypting
+   data, `SecureEnough()` will ask the `ConfigurationProvider()` for the
+   approprite keys/secrets for the time in the cookie/hash (if there is one).
 
 This flow will allow you to easily create a plethora of site secrets and RSA
 keys -- as in a new one each day -- which means that while this module is not
@@ -120,7 +120,8 @@ actually secure, it is Secure Enough for most web applications.
 
 UNTESTED
 
-* You can create "configuration objects" that accept a timestamp and return an appropriate secret/encryption key
+* You can create "configuration objects" that accept a timestamp and return an
+appropriate secret/encryption key
 
 
 ===================
@@ -142,4 +143,4 @@ The timebased providers are largely untested.
 
 --------------------------------------------------------------------------------
 
-insecure_but_secure_enough is released under the MIT license
+`insecure_but_secure_enough` is released under the MIT license
