@@ -4,6 +4,7 @@
     * added some new tests
     * this may not be backwards compatible as some default args and data types have changed
     * tests/supports: py37-312
+    * test commit signing requirements
 
 0.1.4
 	* py3 improvements. attempts to handle b/str encodings
