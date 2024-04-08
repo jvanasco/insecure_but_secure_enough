@@ -1,11 +1,13 @@
-from __future__ import print_function
-
+# stdlib
 import hashlib
 import os
 import random
 import timeit
 
+# pypi/local
 from insecure_but_secure_enough import SecureEnough
+
+# ==============================================================================
 
 
 def randomhash(length=8):
@@ -17,6 +19,7 @@ def randomhash(length=8):
 
 
 # init values
+
 
 # #
 # #  our payload should be something that might hold 10 fields of ids
@@ -81,7 +84,9 @@ factories["ise-aes"] = SecureEnough(
     aes_secret=global_app_secret,
 )
 factories["ise-signing"] = SecureEnough(
-    app_secret=global_app_secret, use_rsa_encryption=False, use_obfuscation=False
+    app_secret=global_app_secret,
+    use_rsa_encryption=False,
+    use_obfuscation=False,
 )
 
 
@@ -100,7 +105,8 @@ computed["ise-signing:hmac_sha256_encode"] = factories[
     "ise-signing"
 ].hmac_sha256_encode(payload)
 computed["ise-signing:signed_request"] = SecureEnough.signed_request_create(
-    payload, secret=global_app_secret
+    payload,
+    secret=global_app_secret,
 )
 
 # ## store the tests
@@ -257,7 +263,10 @@ tests["ise_hmac_sha256_roundtrip"] = ise_hmac_sha256_roundtrip
 # #  ise - signed_request
 # #
 def ise_signed_request_encode():
-    signed = SecureEnough.signed_request_create(payload, secret=global_app_secret)
+    signed = SecureEnough.signed_request_create(
+        payload,
+        secret=global_app_secret,
+    )
 
 
 tests["ise_signed_request_encode"] = ise_signed_request_encode
@@ -265,7 +274,8 @@ tests["ise_signed_request_encode"] = ise_signed_request_encode
 
 def ise_signed_request_decode():
     valid = SecureEnough.signed_request_verify(
-        computed["ise-signing:signed_request"], secret=global_app_secret
+        computed["ise-signing:signed_request"],
+        secret=global_app_secret,
     )
 
 
@@ -273,8 +283,14 @@ tests["ise_signed_request_decode"] = ise_signed_request_decode
 
 
 def ise_signed_request_roundtrip():
-    signed = SecureEnough.signed_request_create(payload, secret=global_app_secret)
-    valid = SecureEnough.signed_request_verify(signed, secret=global_app_secret)
+    signed = SecureEnough.signed_request_create(
+        payload,
+        secret=global_app_secret,
+    )
+    valid = SecureEnough.signed_request_verify(
+        signed,
+        secret=global_app_secret,
+    )
 
 
 tests["ise_signed_request_roundtrip"] = ise_signed_request_roundtrip

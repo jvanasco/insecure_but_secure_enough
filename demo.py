@@ -1,6 +1,7 @@
-from __future__ import print_function
-
+# pypi/local
 from insecure_but_secure_enough import SecureEnough
+
+# ==============================================================================
 
 
 # generated via `openssl genrsa -des3 -out private.pem 1024`
