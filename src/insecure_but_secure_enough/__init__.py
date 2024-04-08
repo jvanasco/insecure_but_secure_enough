@@ -257,10 +257,11 @@ class Obfuscator(object):
         # copy out our OBFUSCATE_KEY to the length of the text
         key = self.obfuscation_key * (len(text) // len(self.obfuscation_key) + 1)
 
-        if DEBUG_FUNC:
-            print("============== obfuscate ==============")
-            print("* text:", type(text), text)
-            print("* key:", type(key), key)
+        if __debug__:
+            if DEBUG_FUNC:
+                print("============== obfuscate ==============")
+                print("* text:", type(text), text)
+                print("* key:", type(key), key)
 
         # XOR each character from our input
         # with the corresponding character from the key
@@ -662,12 +663,13 @@ class SecureEnough(object):
         time_now should ONLY be used for testing/debugging situations when an
         invalid payload is needed.
         """
-        if DEBUG_FUNC:
-            print("============== encode ==============")
-            print("* data:", type(data), data)
-            print("* hashtime:", type(hashtime), hashtime)
-            print("* time_now:", type(time_now), time_now)
-            print("* hmac_algorithm:", type(hmac_algorithm), hmac_algorithm)
+        if __debug__:
+            if DEBUG_FUNC:
+                print("============== encode ==============")
+                print("* data:", type(data), data)
+                print("* hashtime:", type(hashtime), hashtime)
+                print("* time_now:", type(time_now), time_now)
+                print("* hmac_algorithm:", type(hmac_algorithm), hmac_algorithm)
 
         # compute the time, which is used for verification
         # and coordinating the right secrets
@@ -728,12 +730,13 @@ class SecureEnough(object):
         hmac_algorithm: Optional[str] = "HMAC-SHA1",
     ) -> TYPE_decoded:
         """public method. decodes data."""
-        if DEBUG_FUNC:
-            print("============== decode ==============")
-            print("* payload:", type(payload), payload)
-            print("* hashtime:", type(hashtime), hashtime)
-            print("* timeout:", type(timeout), timeout)
-            print("* hmac_algorithm:", type(hmac_algorithm), hmac_algorithm)
+        if __debug__:
+            if DEBUG_FUNC:
+                print("============== decode ==============")
+                print("* payload:", type(payload), payload)
+                print("* hashtime:", type(hashtime), hashtime)
+                print("* timeout:", type(timeout), timeout)
+                print("* hmac_algorithm:", type(hmac_algorithm), hmac_algorithm)
 
         # if we dont have hashtime support, this needs to be None...
         time_then: Optional[int] = None
