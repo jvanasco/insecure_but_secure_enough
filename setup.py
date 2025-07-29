@@ -1,16 +1,17 @@
 """insecure_but_secure_enough installation script.
 """
+
 import os
 import re
 
-from setuptools import setup
 from setuptools import find_packages
+from setuptools import setup
 
 HERE = os.path.abspath(os.path.dirname(__file__))
 
-long_description = (
-    description
-) = "Lightweight tools for signing and encrypting cookies, urls and stuff. This package isn't really secure, but it is secure enough for most needs."
+long_description = description = (
+    "Lightweight tools for signing and encrypting cookies, urls and stuff. This package isn't really secure, but it is secure enough for most needs."
+)
 with open(os.path.join(HERE, "README.md")) as fp:
     long_description = fp.read()
 
@@ -18,7 +19,9 @@ with open(os.path.join(HERE, "README.md")) as fp:
 with open(
     os.path.join(HERE, "src", "insecure_but_secure_enough", "__init__.py")
 ) as v_file:
-    VERSION = re.compile(r'.*__VERSION__ = "(.*?)"', re.S).match(v_file.read()).group(1)
+    VERSION = (
+        re.compile(r'.*__VERSION__ = "(.*?)"', re.S).match(v_file.read()).group(1)  # type: ignore[union-attr]
+    )
 
 requires = [
     "pycryptodomex",
@@ -44,6 +47,7 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
     ],
     keywords="web pylons pyramid",
     author="Jonathan Vanasco",
