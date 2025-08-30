@@ -3,7 +3,7 @@
     * dropped `ALLOW_LAX_INPUTS`
     * dropped `payload_only` from `signed_request_verify`
     * app_secret and obfuscation_secret MUST be bytes
-
+    * dropped license classifier
 
 0.2.0
     * drop py2 for typing
