@@ -1,3 +1,10 @@
+0.3.0
+    * `SecureEnough.encode` no longer accepts a float for `time_now`; must either be `int` or `None`
+    * dropped `ALLOW_LAX_INPUTS`
+    * dropped `payload_only` from `signed_request_verify`
+    * app_secret and obfuscation_secret MUST be bytes
+    * dropped license classifier
+
 0.2.0
     * drop py2 for typing
     * migrate docs from init.py to readme

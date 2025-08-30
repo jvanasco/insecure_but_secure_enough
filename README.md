@@ -6,7 +6,7 @@ This package is "insecure", but secure enough.
 
 The idea behing being "secure_enough" is to allow for "autologin cookies" and "instant login" urls for social web applications.
 
-This package is very similar to "ItsDangerous" - which is now popular, but was unknown when this package was first written.
+This package is similar to "ItsDangerous" - which is now popular, but was unknown when this package was first written.
 
 Two important things to note:
 
