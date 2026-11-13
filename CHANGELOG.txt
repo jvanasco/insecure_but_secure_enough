@@ -1,4 +1,5 @@
 1.0.0
+    * raise InvalidPayload for malformed timestamped tokens and invalid encoded data
     * use constant-time comparisons for signatures and timestamp checksums
     * omit signatures from verification errors and reject malformed signed requests
     * consolidated packaging, tox and mypy configuration

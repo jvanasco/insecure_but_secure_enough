@@ -496,6 +496,32 @@ class TestVerificationMethods_Generic(unittest.TestCase):
                 with self.assertRaises(insecure_but_secure_enough.InvalidChecksum):
                     verifier.decode(prefix + "|" + checksum)
 
+    def test_malformed_timestamped_envelopes(self) -> None:
+        """Use the same payload error for decoding and inspecting bad envelopes."""
+        verifier = SecureEnough(app_secret=app_secret__bytes)
+        for token in ("missing", "YQ|1|digest|extra", "YQ|bad|digest", "YQ|inf|digest"):
+            with self.subTest(token=token):
+                with self.assertRaises(insecure_but_secure_enough.InvalidPayload):
+                    verifier.decode(token)
+                with self.assertRaises(insecure_but_secure_enough.InvalidPayload):
+                    verifier.debug_hashtime(token)
+
+    def test_invalid_encoded_payload(self) -> None:
+        """Reject invalid Base64 and bytes that are not UTF-8."""
+        verifier = SecureEnough()
+        for token in ("Y!Q=", "A", "é", "_w"):
+            with self.subTest(token=token):
+                with self.assertRaises(insecure_but_secure_enough.InvalidPayload):
+                    verifier.decode(token, hashtime=False)
+
+    def test_decode_legacy_timestamp_and_empty_payload(self) -> None:
+        """Accept an empty encoded payload with a legacy decimal timestamp."""
+        verifier = SecureEnough(app_secret=app_secret__bytes)
+        token = verifier.encode("", time_now=123)
+        payload, timestamp, checksum = token.split("|")
+        legacy_token = "|".join((payload, timestamp + ".0", checksum))
+        self.assertEqual(verifier.decode(legacy_token), "")
+
     def test_signed_request_invalid__json(self):
         request_data = data.copy()
         issued_at = int(time())
