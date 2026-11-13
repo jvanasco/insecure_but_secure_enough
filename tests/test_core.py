@@ -1,5 +1,6 @@
-# stdlib
+import base64
 import datetime
+import json
 from time import time
 from typing import Callable
 from typing import Dict
@@ -430,6 +431,70 @@ class TestVerificationMethods_Generic(unittest.TestCase):
     """
     This is a generic terstrunner
     """
+
+    def test_signed_request_invalid_envelope(self) -> None:
+        """Report malformed envelopes as invalid payloads."""
+        for token in ("", "missing-separator", ".payload", "signature.", "a.b.c"):
+            with self.subTest(token=token):
+                with self.assertRaises(insecure_but_secure_enough.InvalidPayload):
+                    SecureEnough.signed_request_verify(token, secret=app_secret__bytes)
+
+    def test_signed_request_invalid_json_metadata(self) -> None:
+        """Distinguish an invalid JSON shape from an invalid algorithm."""
+        for value, error in (
+            ([], insecure_but_secure_enough.InvalidPayload),
+            ({}, insecure_but_secure_enough.InvalidAlgorithm),
+            ({"algorithm": 42}, insecure_but_secure_enough.InvalidAlgorithm),
+        ):
+            with self.subTest(value=value):
+                payload = base64.urlsafe_b64encode(json.dumps(value).encode()).decode()
+                with self.assertRaises(error):
+                    SecureEnough.signed_request_verify(
+                        "signature." + payload, secret=app_secret__bytes
+                    )
+
+    def test_signed_request_invalid_issued_at(self) -> None:
+        """Require a finite numeric timestamp only when checking expiry."""
+        for timestamp in (None, "123", True, float("nan"), float("inf")):
+            with self.subTest(timestamp=timestamp):
+                token = SecureEnough.signed_request_create(
+                    {"issued_at": timestamp}, secret=app_secret__bytes
+                )
+                self.assertTrue(
+                    SecureEnough.signed_request_verify(
+                        token, secret=app_secret__bytes
+                    )[0]
+                )
+                with self.assertRaises(insecure_but_secure_enough.InvalidPayload):
+                    SecureEnough.signed_request_verify(
+                        token, secret=app_secret__bytes, timeout=100
+                    )
+
+    def test_signature_error_omits_signature_values(self) -> None:
+        """Report invalid ASCII and Unicode signatures without exposing digests."""
+        token = SecureEnough.signed_request_create({}, secret=app_secret__bytes)
+        _, payload = token.split(".")
+        for signature in ("incorrect", "é"):
+            with self.subTest(signature=signature):
+                with self.assertRaises(
+                    insecure_but_secure_enough.InvalidSignature
+                ) as error:
+                    SecureEnough.signed_request_verify(
+                        signature + "." + payload, secret=app_secret__bytes
+                    )
+                self.assertEqual(
+                    str(error.exception), "Invalid signed request signature."
+                )
+
+    def test_timestamped_payload_invalid_checksum(self) -> None:
+        """Report a Unicode checksum through the verification exception."""
+        verifier = SecureEnough(app_secret=app_secret__bytes)
+        token = verifier.encode({"value": 1})
+        prefix, _ = token.rsplit("|", 1)
+        for checksum in ("incorrect", "é"):
+            with self.subTest(checksum=checksum):
+                with self.assertRaises(insecure_but_secure_enough.InvalidChecksum):
+                    verifier.decode(prefix + "|" + checksum)
 
     def test_signed_request_invalid__json(self):
         request_data = data.copy()
