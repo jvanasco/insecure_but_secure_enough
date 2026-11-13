@@ -1,4 +1,6 @@
 2.0.0
+    * add rolling-upgrade controls for legacy AES reads and writes
+    * support optional encoded token limits and reject misaligned RSA ciphertext
     * require Python 3.10 or newer and use cryptography for AES and RSA
     * write versioned AES-GCM tokens and retain support for reading 1.x AES-CFB8 tokens
     * preserve the RSA-OAEP token format and signing formats

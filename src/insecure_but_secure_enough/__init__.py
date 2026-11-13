@@ -90,6 +90,15 @@ class InvalidTimeout(Invalid):
 # ==============================================================================
 
 
+def _check_token_length(token: str, maximum: Optional[int]) -> None:
+    """Enforce an optional limit on encoded token characters."""
+    if maximum is not None:
+        if type(maximum) is not int or maximum <= 0:
+            raise ValueError("max_token_length must be a positive integer or None.")
+        if len(token) > maximum:
+            raise InvalidPayload("Encoded token exceeds max_token_length.")
+
+
 def split_hashed_format(
     payload: str,
 ) -> Tuple[str, int, str]:
@@ -133,11 +142,20 @@ class AesCipherHolder:
         except InvalidTag as exc:
             raise InvalidPayload("Invalid AES-GCM authentication tag.") from exc
 
-    def decrypt_legacy(self, payload: bytes) -> bytes:
-        """Decrypt the AES-CFB8 format used by 1.x tokens."""
+    def _legacy_cipher(self) -> Cipher:
+        """Build the cipher used by 1.x tokens."""
         key = hashlib.sha256(self._secret).digest()
         iv = hashlib.md5(self._secret, usedforsecurity=False).digest()
-        decryptor = Cipher(algorithms.AES(key), CFB8(iv)).decryptor()
+        return Cipher(algorithms.AES(key), CFB8(iv))
+
+    def encrypt_legacy(self, payload: bytes) -> bytes:
+        """Produce 1.x ciphertext during a rolling upgrade."""
+        encryptor = self._legacy_cipher().encryptor()
+        return encryptor.update(payload) + encryptor.finalize()
+
+    def decrypt_legacy(self, payload: bytes) -> bytes:
+        """Decrypt the AES-CFB8 format used by 1.x tokens."""
+        decryptor = self._legacy_cipher().decryptor()
         return decryptor.update(payload) + decryptor.finalize()
 
 
@@ -191,6 +209,8 @@ class RsaKeyHolder:
 
     def decrypt(self, payload: bytes) -> bytes:
         """Decrypt blocks using the RSA private key."""
+        if len(payload) % self.key_length_bytes:
+            raise InvalidPayload("Misaligned RSA ciphertext.")
         key = self.key
         if not isinstance(key, rsa.RSAPrivateKey):
             raise TypeError("An RSA private key is required for decryption.")
@@ -373,7 +393,18 @@ class SecureEnough(object):
         use_obfuscation: bool = False,
         obfuscation_secret: Optional[bytes] = None,
         obfuscation_key: Optional[str] = None,
-    ):
+        *,
+        allow_legacy_aes_reads: bool = True,
+        write_legacy_aes: bool = False,
+        max_token_length: Optional[int] = None,
+    ) -> None:
+        """Configure token processing and optional legacy AES and length policies."""
+        if write_legacy_aes and not allow_legacy_aes_reads:
+            raise ValueError("Legacy AES writes require legacy AES reads.")
+        _check_token_length("", max_token_length)
+        self.allow_legacy_aes_reads = allow_legacy_aes_reads
+        self.write_legacy_aes = write_legacy_aes
+        self.max_token_length = max_token_length
         # app serect
         if config_app_secret and app_secret:
             raise ValueError("Supply only one of: `config_app_secret`,  `app_secret`.")
@@ -578,6 +609,8 @@ class SecureEnough(object):
         secret: bytes,
         timeout: Optional[int] = None,
         algorithm: str = "HMAC-SHA256",
+        *,
+        max_token_length: Optional[int] = None,
     ) -> Tuple[bool, Dict]:
         """
         This is compatible with signed requests from facebook.com
@@ -585,12 +618,13 @@ class SecureEnough(object):
 
         returns a tuple of (Boolean, Dict), where `Dict` is the payload and
         `Boolean` is `True` or `False` based on an optional `timeout` argument.
-        Raises an `Invalid` if a serious error occurs.
+        Raises an `Invalid` for invalid tokens, including tokens over the length limit.
         """
         if not isinstance(signed_request, str):
             raise ValueError("`signed_request` MUST be `str`.")
         if not isinstance(secret, bytes):
             raise ValueError("`secret` MUST be `bytes`.")
+        _check_token_length(signed_request, max_token_length)
         signature, separator, payload = signed_request.partition(".")
         if not separator or not signature or not payload or "." in payload:
             raise InvalidPayload("Invalid signed request format.")
@@ -750,10 +784,18 @@ class SecureEnough(object):
                 _payload = self.rsa_key(timestamp=time_now).encrypt(_payload)
             elif self.use_aes_encryption:
                 # `.encrypt()` expects a `bytes` and returns `bytes`
-                _payload = self.aes_cipher(timestamp=time_now).encrypt(_payload)
+                cipher = self.aes_cipher(timestamp=time_now)
+                if self.write_legacy_aes:
+                    _payload = cipher.encrypt_legacy(_payload)
+                else:
+                    _payload = cipher.encrypt(_payload)
         # finally urlencode it: bytes->str
         payload = self._base64_url_encode(_payload)
-        if self.use_aes_encryption and not self.use_rsa_encryption:
+        if (
+            self.use_aes_encryption
+            and not self.use_rsa_encryption
+            and not self.write_legacy_aes
+        ):
             payload = _AES_GCM_PREFIX + payload
 
         # if we're computing time-sensitive keys or expiration, we'll return a compound token
@@ -779,6 +821,9 @@ class SecureEnough(object):
         hmac_algorithm: Optional[str] = "HMAC-SHA1",
     ) -> TYPE_decoded:
         """Decode a token, raising InvalidPayload for malformed token data."""
+        if not isinstance(payload, str):
+            raise ValueError("`payload` MUST be `str`.")
+        _check_token_length(payload, self.max_token_length)
         if __debug__:
             if DEBUG_FUNC:
                 print("============== decode ==============")
@@ -821,13 +866,10 @@ class SecureEnough(object):
             payload = signed_payload
 
         # decodes into bytes: bytes/str -> bytes
-        if not isinstance(payload, str):
-            raise ValueError("`payload` MUST be `str`.")
-        aes_gcm = (
-            self.use_aes_encryption
-            and not self.use_rsa_encryption
-            and payload.startswith(_AES_GCM_PREFIX)
-        )
+        aes_enabled = self.use_aes_encryption and not self.use_rsa_encryption
+        aes_gcm = aes_enabled and payload.startswith(_AES_GCM_PREFIX)
+        if aes_enabled and not aes_gcm and not self.allow_legacy_aes_reads:
+            raise InvalidPayload("Legacy AES reads are disabled.")
         if aes_gcm:
             payload = payload[len(_AES_GCM_PREFIX) :]
         try:
@@ -873,6 +915,9 @@ class SecureEnough(object):
         format compatible with `encode` and `decode`
         """
 
+        if not isinstance(payload, str):
+            raise ValueError("`payload` MUST be `str`.")
+        _check_token_length(payload, self.max_token_length)
         (signed_payload, time_then, hash_received) = split_hashed_format(payload)
 
         time_now = int(time())
