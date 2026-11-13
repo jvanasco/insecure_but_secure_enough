@@ -19,6 +19,31 @@ This package supports the following schemes for encrypting data:
 1. RSA encryption
 2. AES encryption
 
+## Upgrading to 2.0
+
+Version 2.0 requires Python 3.10 or newer. By default it writes AES-GCM
+tokens with random nonces and reads both AES formats with the same secrets.
+For a rolling upgrade:
+
+1. Deploy 2.0 with `SecureEnough(..., write_legacy_aes=True)` on writers
+   while any 1.x readers remain.
+2. After all readers run 2.0, remove `write_legacy_aes=True` to start
+   issuing AES-GCM tokens.
+3. After the last legacy tokens expire or are retired, set
+   `allow_legacy_aes_reads=False` on readers. Legacy tokens issued with
+   `hashtime=False` lack authentication.
+
+To bound verification work, set `max_token_length` on `SecureEnough` for
+`decode()` and `debug_hashtime()`, or pass it to `signed_request_verify()`.
+The limit counts characters in the complete encoded token, including any
+timestamp and signature. It defaults to `None` (unlimited).
+
+RSA and signing token formats are unchanged. Code that accesses cipher
+holders directly should use their `encrypt()` and `decrypt()` methods.
+`RsaKeyHolder.key` now exposes a `cryptography` RSA key, and the old
+backend-specific `cipher` members are removed. For direct reads of legacy
+AES ciphertext, use `AesCipherHolder.decrypt_legacy()`.
+
 
 This package supports the following schemes for signing data:
 

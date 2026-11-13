@@ -6,7 +6,6 @@ import json
 import math
 import os
 from time import time
-from typing import Any
 from typing import Callable
 from typing import Dict
 from typing import List
@@ -16,15 +15,23 @@ from typing import TYPE_CHECKING
 from typing import Union
 
 # pypi
-from Cryptodome.Cipher import AES
-from Cryptodome.Cipher import PKCS1_OAEP
-from Cryptodome.PublicKey import RSA
-from typing_extensions import Protocol
-
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.decrepit.ciphers.modes import CFB8
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.ciphers import algorithms
+from cryptography.hazmat.primitives.ciphers import Cipher
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 # ==============================================================================
 
-__VERSION__ = "1.0.0"
+__VERSION__ = "2.0.0"
+
+_AES_GCM_PREFIX = "v2."
+_AES_GCM_AAD = _AES_GCM_PREFIX.encode("ascii")
+_AES_GCM_NONCE_BYTES = 12
 
 TYPE_decoded = Union[None, str, Dict, List]
 
@@ -42,12 +49,6 @@ DEBUG_FUNC = bool(int(os.getenv("IBSE_DEBUG_FUNC", "0")))
 #        " `ALLOW_LAX_INPUTS` is currently enabled by dfault, but will be removed."
 #    )
 #    warnings.warn(message, FutureWarning, stacklevel=2)
-
-
-class _CipherInterface(Protocol):
-    def encrypt(self, ciphertext: bytes) -> bytes: ...  # noqa: E704
-
-    def decrypt(self, message: bytes) -> bytes: ...  # noqa: E704
 
 
 class Invalid(Exception):
@@ -89,6 +90,15 @@ class InvalidTimeout(Invalid):
 # ==============================================================================
 
 
+def _check_token_length(token: str, maximum: Optional[int]) -> None:
+    """Enforce an optional limit on encoded token characters."""
+    if maximum is not None:
+        if type(maximum) is not int or maximum <= 0:
+            raise ValueError("max_token_length must be a positive integer or None.")
+        if len(token) > maximum:
+            raise InvalidPayload("Encoded token exceeds max_token_length.")
+
+
 def split_hashed_format(
     payload: str,
 ) -> Tuple[str, int, str]:
@@ -106,95 +116,108 @@ def split_hashed_format(
 # ==============================================================================
 
 
-class AesCipherHolder(object):
-    """wraps an AES Symmetric Cipher"""
+class AesCipherHolder:
+    """Encrypt with AES-GCM and read legacy AES-CFB8 ciphertext."""
 
-    _secret: bytes
-    _aes_key: bytes
-    _aes_iv: bytes
-
-    def __init__(
-        self,
-        secret: bytes,
-    ):
+    def __init__(self, secret: bytes) -> None:
         if not isinstance(secret, bytes):
             raise ValueError("`secret` MUST be `bytes`.")
         self._secret = secret
+        gcm_key = hashlib.sha256(b"insecure_but_secure_enough AES-GCM v2\x00" + secret)
+        self._aead = AESGCM(gcm_key.digest())
 
-        # compute a 32-byte key
-        self._aes_key = hashlib.sha256(secret).digest()
-        assert len(self._aes_key) == 32
+    def encrypt(self, payload: bytes) -> bytes:
+        """Return a random nonce followed by ciphertext and its authentication tag."""
+        nonce = os.urandom(_AES_GCM_NONCE_BYTES)
+        return nonce + self._aead.encrypt(nonce, payload, _AES_GCM_AAD)
 
-        # compute a 16-byte initialization vector
-        self._aes_iv = hashlib.md5(secret).digest()
-        assert len(self._aes_iv) == 16
+    def decrypt(self, payload: bytes) -> bytes:
+        """Authenticate and decrypt a nonce-prefixed AES-GCM payload."""
+        if len(payload) < _AES_GCM_NONCE_BYTES + 16:
+            raise InvalidPayload("Truncated AES-GCM payload.")
+        nonce = payload[:_AES_GCM_NONCE_BYTES]
+        ciphertext = payload[_AES_GCM_NONCE_BYTES:]
+        try:
+            return self._aead.decrypt(nonce, ciphertext, _AES_GCM_AAD)
+        except InvalidTag as exc:
+            raise InvalidPayload("Invalid AES-GCM authentication tag.") from exc
 
-    def cipher(self) -> Any:
-        # create an AES cipher
-        # use CFB mode to avoid padding workflow
-        cipher = AES.new(self._aes_key, AES.MODE_CFB, self._aes_iv)
-        return cipher
+    def _legacy_cipher(self) -> Cipher:
+        """Build the cipher used by 1.x tokens."""
+        key = hashlib.sha256(self._secret).digest()
+        iv = hashlib.md5(self._secret, usedforsecurity=False).digest()
+        return Cipher(algorithms.AES(key), CFB8(iv))
 
-    def encrypt(
-        self,
-        payload: bytes,
-    ) -> bytes:
-        _encrypted = self.cipher().encrypt(payload)
-        return _encrypted
+    def encrypt_legacy(self, payload: bytes) -> bytes:
+        """Produce 1.x ciphertext during a rolling upgrade."""
+        encryptor = self._legacy_cipher().encryptor()
+        return encryptor.update(payload) + encryptor.finalize()
 
-    def decrypt(
-        self,
-        payload: bytes,
-    ) -> bytes:
-        _decrypted = self.cipher().decrypt(payload)
-        return _decrypted
+    def decrypt_legacy(self, payload: bytes) -> bytes:
+        """Decrypt the AES-CFB8 format used by 1.x tokens."""
+        decryptor = self._legacy_cipher().decryptor()
+        return decryptor.update(payload) + decryptor.finalize()
 
 
-class RsaKeyHolder(object):
-    """wraps an RSA key"""
-
-    key: RSA.RsaKey
-    _key_private: str
-    _key_private_passphrase: Optional[str]
-    key_length_bytes: int
-    block_bytes: int
-    cipher: _CipherInterface
+class RsaKeyHolder:
+    """Read and write the existing blockwise RSA-OAEP format."""
 
     def __init__(
         self,
         key_private: str,
         key_private_passphrase: Optional[str] = None,
-    ):
-        self._key_private = key_private
-        self._key_private_passphrase = key_private_passphrase
-        if self._key_private_passphrase:
-            self.key = RSA.importKey(self._key_private, self._key_private_passphrase)
+    ) -> None:
+        """Load an RSA key and configure the legacy OAEP parameters."""
+        key_data = key_private.encode() if isinstance(key_private, str) else key_private
+        password: Optional[bytes] = (
+            key_private_passphrase.encode()
+            if isinstance(key_private_passphrase, str)
+            else key_private_passphrase
+        ) or None
+        if key_data.lstrip().startswith(b"-----BEGIN"):
+            load_private = serialization.load_pem_private_key
+            load_public = serialization.load_pem_public_key
         else:
-            self.key = RSA.importKey(self._key_private)
-        self.key_length_bytes = self.key.size_in_bytes()
-        # from https://bugs.launchpad.net/pycrypto/+bug/328027
-        self.block_bytes = self.key_length_bytes - 2 * 20 - 2
-        self.cipher = PKCS1_OAEP.new(self.key)
+            load_private = serialization.load_der_private_key
+            load_public = serialization.load_der_public_key
 
-    def encrypt(
-        self,
-        payload: bytes,
-    ) -> bytes:
-        encrypted_blocks: List[bytes] = []
-        for block in self._split_bytes(payload, self.block_bytes):
-            encrypted_block = self.cipher.encrypt(block)
-            encrypted_blocks.append(encrypted_block)
-        return b"".join(encrypted_blocks)
+        key: object
+        try:
+            key = load_private(key_data, password)
+        except ValueError:
+            if password is not None:
+                raise
+            key = load_public(key_data)
+        if not isinstance(key, (rsa.RSAPrivateKey, rsa.RSAPublicKey)):
+            raise ValueError("Expected an RSA key.")
+        self.key = key
+        self.key_length_bytes = (key.key_size + 7) // 8
+        digest = hashes.SHA1()
+        self.block_bytes = self.key_length_bytes - 2 * digest.digest_size - 2
+        self._padding = padding.OAEP(
+            mgf=padding.MGF1(digest), algorithm=digest, label=None
+        )
 
-    def decrypt(
-        self,
-        payload: bytes,
-    ) -> bytes:
-        decrypted_blocks: List[bytes] = []
-        for block in self._split_bytes(payload, self.key_length_bytes):
-            decrypted_block = self.cipher.decrypt(block)
-            decrypted_blocks.append(decrypted_block)
-        return b"".join(decrypted_blocks)
+    def encrypt(self, payload: bytes) -> bytes:
+        """Encrypt blocks using the RSA public key."""
+        key = self.key
+        public_key = key.public_key() if isinstance(key, rsa.RSAPrivateKey) else key
+        return b"".join(
+            public_key.encrypt(block, self._padding)
+            for block in self._split_bytes(payload, self.block_bytes)
+        )
+
+    def decrypt(self, payload: bytes) -> bytes:
+        """Decrypt blocks using the RSA private key."""
+        if len(payload) % self.key_length_bytes:
+            raise InvalidPayload("Misaligned RSA ciphertext.")
+        key = self.key
+        if not isinstance(key, rsa.RSAPrivateKey):
+            raise TypeError("An RSA private key is required for decryption.")
+        return b"".join(
+            key.decrypt(block, self._padding)
+            for block in self._split_bytes(payload, self.key_length_bytes)
+        )
 
     def _split_string(
         self,
@@ -370,7 +393,18 @@ class SecureEnough(object):
         use_obfuscation: bool = False,
         obfuscation_secret: Optional[bytes] = None,
         obfuscation_key: Optional[str] = None,
-    ):
+        *,
+        allow_legacy_aes_reads: bool = True,
+        write_legacy_aes: bool = False,
+        max_token_length: Optional[int] = None,
+    ) -> None:
+        """Configure token processing and optional legacy AES and length policies."""
+        if write_legacy_aes and not allow_legacy_aes_reads:
+            raise ValueError("Legacy AES writes require legacy AES reads.")
+        _check_token_length("", max_token_length)
+        self.allow_legacy_aes_reads = allow_legacy_aes_reads
+        self.write_legacy_aes = write_legacy_aes
+        self.max_token_length = max_token_length
         # app serect
         if config_app_secret and app_secret:
             raise ValueError("Supply only one of: `config_app_secret`,  `app_secret`.")
@@ -575,6 +609,8 @@ class SecureEnough(object):
         secret: bytes,
         timeout: Optional[int] = None,
         algorithm: str = "HMAC-SHA256",
+        *,
+        max_token_length: Optional[int] = None,
     ) -> Tuple[bool, Dict]:
         """
         This is compatible with signed requests from facebook.com
@@ -582,12 +618,13 @@ class SecureEnough(object):
 
         returns a tuple of (Boolean, Dict), where `Dict` is the payload and
         `Boolean` is `True` or `False` based on an optional `timeout` argument.
-        Raises an `Invalid` if a serious error occurs.
+        Raises an `Invalid` for invalid tokens, including tokens over the length limit.
         """
         if not isinstance(signed_request, str):
             raise ValueError("`signed_request` MUST be `str`.")
         if not isinstance(secret, bytes):
             raise ValueError("`secret` MUST be `bytes`.")
+        _check_token_length(signed_request, max_token_length)
         signature, separator, payload = signed_request.partition(".")
         if not separator or not signature or not payload or "." in payload:
             raise InvalidPayload("Invalid signed request format.")
@@ -747,9 +784,19 @@ class SecureEnough(object):
                 _payload = self.rsa_key(timestamp=time_now).encrypt(_payload)
             elif self.use_aes_encryption:
                 # `.encrypt()` expects a `bytes` and returns `bytes`
-                _payload = self.aes_cipher(timestamp=time_now).encrypt(_payload)
+                cipher = self.aes_cipher(timestamp=time_now)
+                if self.write_legacy_aes:
+                    _payload = cipher.encrypt_legacy(_payload)
+                else:
+                    _payload = cipher.encrypt(_payload)
         # finally urlencode it: bytes->str
         payload = self._base64_url_encode(_payload)
+        if (
+            self.use_aes_encryption
+            and not self.use_rsa_encryption
+            and not self.write_legacy_aes
+        ):
+            payload = _AES_GCM_PREFIX + payload
 
         # if we're computing time-sensitive keys or expiration, we'll return a compound token
         if hashtime:
@@ -774,6 +821,9 @@ class SecureEnough(object):
         hmac_algorithm: Optional[str] = "HMAC-SHA1",
     ) -> TYPE_decoded:
         """Decode a token, raising InvalidPayload for malformed token data."""
+        if not isinstance(payload, str):
+            raise ValueError("`payload` MUST be `str`.")
+        _check_token_length(payload, self.max_token_length)
         if __debug__:
             if DEBUG_FUNC:
                 print("============== decode ==============")
@@ -816,8 +866,12 @@ class SecureEnough(object):
             payload = signed_payload
 
         # decodes into bytes: bytes/str -> bytes
-        if not isinstance(payload, str):
-            raise ValueError("`payload` MUST be `str`.")
+        aes_enabled = self.use_aes_encryption and not self.use_rsa_encryption
+        aes_gcm = aes_enabled and payload.startswith(_AES_GCM_PREFIX)
+        if aes_enabled and not aes_gcm and not self.allow_legacy_aes_reads:
+            raise InvalidPayload("Legacy AES reads are disabled.")
+        if aes_gcm:
+            payload = payload[len(_AES_GCM_PREFIX) :]
         try:
             _payload = self._base64_url_decode(payload, validate=True)
         except ValueError as exc:
@@ -831,7 +885,11 @@ class SecureEnough(object):
             if self.use_rsa_encryption:
                 _payload = self.rsa_key(timestamp=time_then).decrypt(_payload)
             elif self.use_aes_encryption:
-                _payload = self.aes_cipher(timestamp=time_then).decrypt(_payload)
+                cipher = self.aes_cipher(timestamp=time_then)
+                if aes_gcm:
+                    _payload = cipher.decrypt(_payload)
+                else:
+                    _payload = cipher.decrypt_legacy(_payload)
 
         # to string
         try:
@@ -857,6 +915,9 @@ class SecureEnough(object):
         format compatible with `encode` and `decode`
         """
 
+        if not isinstance(payload, str):
+            raise ValueError("`payload` MUST be `str`.")
+        _check_token_length(payload, self.max_token_length)
         (signed_payload, time_then, hash_received) = split_hashed_format(payload)
 
         time_now = int(time())

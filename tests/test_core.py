@@ -1,10 +1,12 @@
 import base64
 import datetime
 import json
+from pathlib import Path
 from time import time
 from typing import Callable
 from typing import Dict
 import unittest
+from unittest.mock import patch
 
 # local
 import insecure_but_secure_enough
@@ -425,6 +427,122 @@ class TestFactoryMethods_Encrypted_AES(
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+class TestV2Encryption(unittest.TestCase):
+    """Check legacy token reads and authenticated AES writes."""
+
+    def test_reads_v1_tokens(self) -> None:
+        """Decode signed and unsigned AES and multi-block RSA tokens from 1.0."""
+        fixtures = json.loads(
+            Path(__file__).with_name("v1_tokens.json").read_text(encoding="utf-8")
+        )
+        aes = SecureEnough(
+            app_secret=app_secret__bytes, use_aes_encryption=True, aes_secret=aes_secret
+        )
+        rsa = SecureEnough(
+            app_secret=app_secret__bytes,
+            use_rsa_encryption=True,
+            rsa_key_private=rsa_key_private,
+            rsa_key_private_passphrase=rsa_key_private_passphrase,
+        )
+        self.assertEqual(aes.decode(fixtures["aes"]), fixtures["payload"])
+        self.assertEqual(
+            aes.decode(fixtures["aes_unsigned"], hashtime=False), fixtures["payload"]
+        )
+        self.assertEqual(rsa.decode(fixtures["rsa"]), fixtures["payload"])
+
+    def test_legacy_aes_upgrade_controls(self) -> None:
+        """Match 1.0 writes during rollout and reject them after the cutover."""
+        fixtures = json.loads(
+            Path(__file__).with_name("v1_tokens.json").read_text(encoding="utf-8")
+        )
+        legacy = SecureEnough(
+            app_secret=app_secret__bytes,
+            use_aes_encryption=True,
+            aes_secret=aes_secret,
+            write_legacy_aes=True,
+        )
+        strict = SecureEnough(
+            app_secret=app_secret__bytes,
+            use_aes_encryption=True,
+            aes_secret=aes_secret,
+            allow_legacy_aes_reads=False,
+        )
+        token = legacy.encode(fixtures["payload"], time_now=123)
+        self.assertEqual(token, fixtures["aes"])
+        self.assertEqual(legacy.decode(token), fixtures["payload"])
+        self.assertEqual(legacy.decode(strict.encode(data)), data)
+        with self.assertRaises(insecure_but_secure_enough.InvalidPayload):
+            strict.decode(token)
+        with self.assertRaises(insecure_but_secure_enough.InvalidPayload):
+            strict.decode(fixtures["aes_unsigned"], hashtime=False)
+        with self.assertRaises(ValueError):
+            SecureEnough(write_legacy_aes=True, allow_legacy_aes_reads=False)
+
+    def test_versioned_payload_never_falls_back_to_legacy(self) -> None:
+        """Keep invalid GCM tokens out of the legacy decryption path."""
+        aes = SecureEnough(use_aes_encryption=True, aes_secret=aes_secret)
+        with patch.object(aes.aes_cipher(), "decrypt_legacy") as legacy:
+            for token in ("v2.!", "v2.AA"):
+                with self.subTest(token=token):
+                    with self.assertRaises(insecure_but_secure_enough.InvalidPayload):
+                        aes.decode(token, hashtime=False)
+            legacy.assert_not_called()
+
+    def test_token_length_limits(self) -> None:
+        """Allow exact limits and reject oversized tokens before decoding."""
+        token = SecureEnough().encode(data, hashtime=False)
+        limited = SecureEnough(max_token_length=len(token))
+        self.assertEqual(limited.decode(token, hashtime=False), data)
+        with patch.object(limited, "_base64_url_decode") as decode:
+            with self.assertRaisesRegex(
+                insecure_but_secure_enough.InvalidPayload, "exceeds max_token_length"
+            ):
+                limited.decode(token + "A")
+            decode.assert_not_called()
+        signed = SecureEnough.signed_request_create(data, secret=app_secret__bytes)
+        self.assertTrue(
+            SecureEnough.signed_request_verify(
+                signed, secret=app_secret__bytes, max_token_length=len(signed)
+            )[0]
+        )
+        with self.assertRaisesRegex(
+            insecure_but_secure_enough.InvalidPayload, "exceeds max_token_length"
+        ):
+            SecureEnough.signed_request_verify(
+                signed, secret=app_secret__bytes, max_token_length=len(signed) - 1
+            )
+        with self.assertRaises(ValueError):
+            SecureEnough(max_token_length=0)
+
+    def test_misaligned_rsa_ciphertext(self) -> None:
+        """Reject a trailing partial block before attempting any RSA decryption."""
+        holder = insecure_but_secure_enough.RsaKeyHolder(
+            rsa_key_private, rsa_key_private_passphrase
+        )
+        with patch.object(holder, "_split_bytes") as split:
+            with self.assertRaisesRegex(
+                insecure_but_secure_enough.InvalidPayload, "Misaligned RSA ciphertext"
+            ):
+                holder.decrypt(b"\x00" * (holder.key_length_bytes + 1))
+            split.assert_not_called()
+
+    def test_aes_gcm_uses_random_nonces_and_authenticates(self) -> None:
+        """Authenticate new AES tokens even when the outer HMAC is disabled."""
+        aes = SecureEnough(use_aes_encryption=True, aes_secret=aes_secret)
+        token = aes.encode(data, hashtime=False)
+        self.assertTrue(token.startswith("v2."))
+        self.assertNotEqual(token, aes.encode(data, hashtime=False))
+        self.assertEqual(aes.decode(token, hashtime=False), data)
+        encoded = token.removeprefix("v2.")
+        raw = bytearray(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        raw[-1] ^= 1
+        tampered = "v2." + base64.urlsafe_b64encode(raw).decode().rstrip("=")
+        with self.assertRaises(insecure_but_secure_enough.InvalidPayload):
+            aes.decode(tampered, hashtime=False)
+        with self.assertRaises(insecure_but_secure_enough.InvalidPayload):
+            aes.decode("v2.AA", hashtime=False)
 
 
 class TestVerificationMethods_Generic(unittest.TestCase):
