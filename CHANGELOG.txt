@@ -1,3 +1,9 @@
+2.0.0
+    * require Python 3.10 or newer and use cryptography for AES and RSA
+    * write versioned AES-GCM tokens and retain support for reading 1.x AES-CFB8 tokens
+    * preserve the RSA-OAEP token format and signing formats
+    * drop pycryptodomex in favor of Cryptography
+
 1.0.0
     * raise InvalidPayload for malformed timestamped tokens and invalid encoded data
     * use constant-time comparisons for signatures and timestamp checksums

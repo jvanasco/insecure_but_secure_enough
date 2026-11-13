@@ -19,6 +19,20 @@ This package supports the following schemes for encrypting data:
 1. RSA encryption
 2. AES encryption
 
+## Upgrading to 2.0
+
+Version 2.0 requires Python 3.10 or newer. New AES tokens use AES-GCM with
+a random nonce. Version 2.0 can still decode AES tokens issued by 1.x with
+the same configuration. Upgrade all readers to 2.0 before enabling 2.0
+writers, since 1.x cannot decode the new AES format. Legacy AES tokens issued
+with `hashtime=False` remain readable and lack authentication.
+
+RSA and signing token formats are unchanged. Code that accesses cipher
+holders directly should use their `encrypt()` and `decrypt()` methods.
+`RsaKeyHolder.key` now exposes a `cryptography` RSA key, and the old
+backend-specific `cipher` members are removed. For direct reads of legacy
+AES ciphertext, use `AesCipherHolder.decrypt_legacy()`.
+
 
 This package supports the following schemes for signing data:
 

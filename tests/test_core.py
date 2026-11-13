@@ -1,6 +1,7 @@
 import base64
 import datetime
 import json
+from pathlib import Path
 from time import time
 from typing import Callable
 from typing import Dict
@@ -425,6 +426,46 @@ class TestFactoryMethods_Encrypted_AES(
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+class TestV2Encryption(unittest.TestCase):
+    """Check legacy token reads and authenticated AES writes."""
+
+    def test_reads_v1_tokens(self) -> None:
+        """Decode signed and unsigned AES and multi-block RSA tokens from 1.0."""
+        fixtures = json.loads(
+            Path(__file__).with_name("v1_tokens.json").read_text(encoding="utf-8")
+        )
+        aes = SecureEnough(
+            app_secret=app_secret__bytes, use_aes_encryption=True, aes_secret=aes_secret
+        )
+        rsa = SecureEnough(
+            app_secret=app_secret__bytes,
+            use_rsa_encryption=True,
+            rsa_key_private=rsa_key_private,
+            rsa_key_private_passphrase=rsa_key_private_passphrase,
+        )
+        self.assertEqual(aes.decode(fixtures["aes"]), fixtures["payload"])
+        self.assertEqual(
+            aes.decode(fixtures["aes_unsigned"], hashtime=False), fixtures["payload"]
+        )
+        self.assertEqual(rsa.decode(fixtures["rsa"]), fixtures["payload"])
+
+    def test_aes_gcm_uses_random_nonces_and_authenticates(self) -> None:
+        """Authenticate new AES tokens even when the outer HMAC is disabled."""
+        aes = SecureEnough(use_aes_encryption=True, aes_secret=aes_secret)
+        token = aes.encode(data, hashtime=False)
+        self.assertTrue(token.startswith("v2."))
+        self.assertNotEqual(token, aes.encode(data, hashtime=False))
+        self.assertEqual(aes.decode(token, hashtime=False), data)
+        encoded = token.removeprefix("v2.")
+        raw = bytearray(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        raw[-1] ^= 1
+        tampered = "v2." + base64.urlsafe_b64encode(raw).decode().rstrip("=")
+        with self.assertRaises(insecure_but_secure_enough.InvalidPayload):
+            aes.decode(tampered, hashtime=False)
+        with self.assertRaises(insecure_but_secure_enough.InvalidPayload):
+            aes.decode("v2.AA", hashtime=False)
 
 
 class TestVerificationMethods_Generic(unittest.TestCase):
