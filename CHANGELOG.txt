@@ -1,4 +1,6 @@
 0.3.0
+    * consolidated packaging, tox and mypy configuration
+    * extended the test matrix through Python 3.15 and added HTML coverage reports
     * `SecureEnough.encode` no longer accepts a float for `time_now`; must either be `int` or `None`
     * dropped `ALLOW_LAX_INPUTS`
     * dropped `payload_only` from `signed_request_verify`

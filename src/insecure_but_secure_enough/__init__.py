@@ -23,7 +23,7 @@ from typing_extensions import Protocol
 
 # ==============================================================================
 
-__VERSION__ = "0.3.0"
+__VERSION__ = "1.0.0"
 
 TYPE_decoded = Union[None, str, Dict, List]
 
