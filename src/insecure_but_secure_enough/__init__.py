@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import os
 from time import time
 from typing import Any
@@ -23,7 +24,7 @@ from typing_extensions import Protocol
 
 # ==============================================================================
 
-__VERSION__ = "0.3.0"
+__VERSION__ = "1.0.0"
 
 TYPE_decoded = Union[None, str, Dict, List]
 
@@ -56,7 +57,7 @@ class Invalid(Exception):
 
 
 class InvalidAlgorithm(Invalid):
-    """Raised when a secret it too old"""
+    """Raised when the signature algorithm is unsupported or unexpected."""
 
     pass
 
@@ -91,10 +92,14 @@ class InvalidTimeout(Invalid):
 def split_hashed_format(
     payload: str,
 ) -> Tuple[str, int, str]:
+    """Parse a timestamped token, preserving legacy numeric timestamp syntax."""
     if not isinstance(payload, str):
         raise ValueError("`payload` MUST be `str`.")
-    (signed_payload, time_then, hash_received) = payload.split("|")
-    _time_then = int(float(time_then))
+    try:
+        signed_payload, time_then, hash_received = payload.split("|", 3)
+        _time_then = int(float(time_then))
+    except (ValueError, OverflowError) as exc:
+        raise InvalidPayload("Invalid timestamped payload format.") from exc
     return (signed_payload, _time_then, hash_received)
 
 
@@ -502,17 +507,15 @@ class SecureEnough(object):
     def _base64_url_decode(
         cls,
         payload: str,
+        *,
+        validate: bool = False,
     ) -> bytes:
-        """
-        internal classmethod for b64 decoding. this is essentially wrapping
-        base64.base64_url_decode, to allow for a later switch
-        """
+        """Decode URL-safe Base64, optionally rejecting invalid characters."""
         if not isinstance(payload, str):
             raise ValueError("`payload` MUST be `str`.")
         padding_factor = (4 - len(payload) % 4) % 4
         payload += "=" * padding_factor
-        decoded = base64.urlsafe_b64decode(payload)
-        return decoded
+        return base64.b64decode(payload, altchars=b"-_", validate=validate)
 
     @classmethod
     def _digestmod(
@@ -585,38 +588,42 @@ class SecureEnough(object):
             raise ValueError("`signed_request` MUST be `str`.")
         if not isinstance(secret, bytes):
             raise ValueError("`secret` MUST be `bytes`.")
-        signature: str
-        payload: str
-        (signature, payload) = signed_request.split(".")
+        signature, separator, payload = signed_request.partition(".")
+        if not separator or not signature or not payload or "." in payload:
+            raise InvalidPayload("Invalid signed request format.")
         digestmod = cls._digestmod(algorithm)
         try:
-            # decoded_signature = cls._base64_url_decode(signature)
             payload_decoded = cls._base64_url_decode(payload)
             data = json.loads(payload_decoded)
         except json.JSONDecodeError as exc:
-            raise InvalidPayload(exc.msg)
-        except Exception:
-            raise InvalidPayload("Can't decode payload (_base64 error?).")
+            raise InvalidPayload(exc.msg) from exc
+        except (ValueError, RecursionError) as exc:
+            raise InvalidPayload("Can't decode signed request payload.") from exc
 
-        if data.get("algorithm").upper() != algorithm:
-            raise InvalidAlgorithm(
-                "unexpected algorithm.  Wanted %s, Received %s"
-                % (algorithm, data.get("algorithm"))
-            )
+        if not isinstance(data, dict):
+            raise InvalidPayload("Signed request payload must be a JSON object.")
+        payload_algorithm = data.get("algorithm")
+        if (
+            not isinstance(payload_algorithm, str)
+            or payload_algorithm.upper() != algorithm
+        ):
+            raise InvalidAlgorithm("Unexpected signed request algorithm.")
 
         _payload: bytes = payload.encode()
 
         expected_sig = hmac.new(secret, msg=_payload, digestmod=digestmod).hexdigest()
 
-        if signature != expected_sig:
-            raise InvalidSignature(
-                "invalid signature.  signature (%s) != expected_sig (%s)"
-                % (signature, expected_sig)
-            )
+        if not signature.isascii() or not hmac.compare_digest(signature, expected_sig):
+            raise InvalidSignature("Invalid signed request signature.")
 
         if timeout:
+            issued_at = data.get("issued_at")
+            if isinstance(issued_at, bool) or not isinstance(issued_at, (int, float)):
+                raise InvalidPayload("Signed request must have a numeric issued_at.")
+            if isinstance(issued_at, float) and not math.isfinite(issued_at):
+                raise InvalidPayload("Signed request must have a finite issued_at.")
             time_now = int(time())
-            diff = time_now - data["issued_at"]
+            diff = time_now - issued_at
             if diff > timeout:
                 return (False, data)
 
@@ -766,7 +773,7 @@ class SecureEnough(object):
         timeout: Optional[int] = None,
         hmac_algorithm: Optional[str] = "HMAC-SHA1",
     ) -> TYPE_decoded:
-        """public method. decodes data."""
+        """Decode a token, raising InvalidPayload for malformed token data."""
         if __debug__:
             if DEBUG_FUNC:
                 print("============== decode ==============")
@@ -790,10 +797,16 @@ class SecureEnough(object):
                 assert hmac_algorithm is not None
             # format compatible with `encode` and `debug_hashtime`
             (signed_payload, time_then, hash_received) = split_hashed_format(payload)
+            try:
+                signed_bytes = signed_payload.encode()
+            except UnicodeEncodeError as exc:
+                raise InvalidPayload("Invalid text in timestamped payload.") from exc
             hash_expected = self._hmac_for_timestamp(
-                signed_payload.encode(), time_then, algorithm=hmac_algorithm
+                signed_bytes, time_then, algorithm=hmac_algorithm
             )
-            if hash_expected != hash_received:
+            if not hash_received.isascii() or not hmac.compare_digest(
+                hash_expected, hash_received
+            ):
                 raise InvalidChecksum()
             if timeout:
                 time_now = int(time())
@@ -803,7 +816,12 @@ class SecureEnough(object):
             payload = signed_payload
 
         # decodes into bytes: bytes/str -> bytes
-        _payload = self._base64_url_decode(payload)
+        if not isinstance(payload, str):
+            raise ValueError("`payload` MUST be `str`.")
+        try:
+            _payload = self._base64_url_decode(payload, validate=True)
+        except ValueError as exc:
+            raise InvalidPayload("Invalid Base64 payload.") from exc
 
         # decoding is done in reverse of encoding
         # so decrypt, then deobfuscate
@@ -816,7 +834,10 @@ class SecureEnough(object):
                 _payload = self.aes_cipher(timestamp=time_then).decrypt(_payload)
 
         # to string
-        payload = _payload.decode()
+        try:
+            payload = _payload.decode()
+        except UnicodeDecodeError as exc:
+            raise InvalidPayload("Payload is not valid UTF-8.") from exc
         if self.use_obfuscation:
             # deobfuscate == obfuscate: str -> str
             payload = self.obfuscator(timestamp=time_then).deobfuscate(payload)

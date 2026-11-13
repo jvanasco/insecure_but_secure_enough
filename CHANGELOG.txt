@@ -1,9 +1,15 @@
-0.3.0
+1.0.0
+    * raise InvalidPayload for malformed timestamped tokens and invalid encoded data
+    * use constant-time comparisons for signatures and timestamp checksums
+    * omit signatures from verification errors and reject malformed signed requests
+    * consolidated packaging, tox and mypy configuration
+    * extended the test matrix through Python 3.15 and added HTML coverage reports
     * `SecureEnough.encode` no longer accepts a float for `time_now`; must either be `int` or `None`
     * dropped `ALLOW_LAX_INPUTS`
     * dropped `payload_only` from `signed_request_verify`
     * app_secret and obfuscation_secret MUST be bytes
     * dropped license classifier
+    * version 2.0 will drop support for Python3.9 and below
 
 0.2.0
     * drop py2 for typing
