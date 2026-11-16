@@ -3,6 +3,7 @@ import datetime
 import json
 from pathlib import Path
 from time import time
+from typing import Any
 from typing import Callable
 from typing import Dict
 import unittest
@@ -109,6 +110,25 @@ class _Obfuscator_Configuration(object):
 
 
 class TestInvalidArgs(unittest.TestCase):
+
+    def test__empty_or_redacted_constructor_secrets(self) -> None:
+        """Report the offending argument for text and byte placeholders."""
+        for name in (
+            "app_secret",
+            "aes_secret",
+            "rsa_key_private",
+            "rsa_key_private_passphrase",
+            "obfuscation_secret",
+            "obfuscation_key",
+        ):
+            for placeholder in ("", "REDACTED", "[Redacted]"):
+                for value in (placeholder, placeholder.encode("ascii")):
+                    with self.subTest(name=name, value=value):
+                        kwargs: Dict[str, Any] = {name: value}
+                        with self.assertRaisesRegex(
+                            ValueError, f"`{name}` is empty or appears to be redacted"
+                        ):
+                            SecureEnough(**kwargs)
 
     def test__invalid_constructor(self):
         with self.assertRaises(ValueError) as cm:
