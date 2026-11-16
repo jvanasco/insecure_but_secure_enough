@@ -27,7 +27,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 # ==============================================================================
 
-__VERSION__ = "2.0.0"
+__VERSION__ = "2.0.1"
 
 _AES_GCM_PREFIX = "v2."
 _AES_GCM_AAD = _AES_GCM_PREFIX.encode("ascii")
@@ -398,7 +398,28 @@ class SecureEnough(object):
         write_legacy_aes: bool = False,
         max_token_length: Optional[int] = None,
     ) -> None:
-        """Configure token processing and optional legacy AES and length policies."""
+        """Configure token processing and reject empty or visibly redacted secrets."""
+        for name, value in (
+            ("app_secret", app_secret),
+            ("aes_secret", aes_secret),
+            ("rsa_key_private", rsa_key_private),
+            ("rsa_key_private_passphrase", rsa_key_private_passphrase),
+            ("obfuscation_secret", obfuscation_secret),
+            ("obfuscation_key", obfuscation_key),
+        ):
+            if isinstance(value, (str, bytes)) and value.lower() in (
+                "",
+                "redacted",
+                "[redacted]",
+                b"",
+                b"redacted",
+                b"[redacted]",
+            ):
+                raise ValueError(
+                    f"`{name}` is empty or appears to be redacted. "
+                    "Supply an actual secret or use None if it is unused."
+                )
+
         if write_legacy_aes and not allow_legacy_aes_reads:
             raise ValueError("Legacy AES writes require legacy AES reads.")
         _check_token_length("", max_token_length)

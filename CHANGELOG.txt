@@ -1,3 +1,6 @@
+2.0.1
+    * raise a field-specific error for empty or visibly redacted SecureEnough secrets
+
 2.0.0
     * add rolling-upgrade controls for legacy AES reads and writes
     * support optional encoded token limits and reject misaligned RSA ciphertext
